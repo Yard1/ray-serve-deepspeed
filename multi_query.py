@@ -19,14 +19,14 @@ def send_query(text):
 # Let's use Ray to send all queries in parallel
 texts = [
     'When was George Washington president?',
-    'Explain to me the difference between nuclear fission and fusion.',
-    'Give me a list of 5 science fiction books I should read next.',
-    'Explain the difference between Spark and Ray.',
-    'Suggest some fun holiday ideas.',
-    'Tell a joke.',
-    'What is 2+2?',
-    'Explain what is machine learning like I am five years old.',
-    'Explain what is artifical intelligence.',
+    # 'Explain to me the difference between nuclear fission and fusion.',
+    # 'Give me a list of 5 science fiction books I should read next.',
+    # 'Explain the difference between Spark and Ray.',
+    # 'Suggest some fun holiday ideas.',
+    # 'Tell a joke.',
+    # 'What is 2+2?',
+    # 'Explain what is machine learning like I am five years old.',
+    # 'Explain what is artifical intelligence.',
 ]*1
 
 for i in test_sizes: 

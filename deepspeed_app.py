@@ -54,16 +54,16 @@ class Args(BaseModel):
     hf_home: str
     checkpoint_path: str
     batch_size: int = 32
-    ds_inference: bool = True
+    # ds_inference: bool = True
     use_kernel: bool = False
-    use_meta_tensor: bool = False
+    # use_meta_tensor: bool = False
     num_worker_groups: int = 1
     num_gpus_per_worker_group: int = 2
     reshard_checkpoint_path: Optional[str] = None
     use_cache: bool = True
 
-    max_new_tokens: int = 2048
-    max_tokens: int = 2048
+    max_new_tokens: int = 256
+    max_tokens: int = 1024
     dtype: str = "float16"
     save_mp_checkpoint_path: Optional[str] = None
 

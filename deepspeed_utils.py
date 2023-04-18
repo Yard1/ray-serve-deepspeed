@@ -29,26 +29,22 @@ def init_model(
     if local_rank == 0:
         see_memory_usage("after init", True)
 
-    if args.use_meta_tensor:
-        ds_kwargs = dict(base_dir=pipe.repo_root, checkpoint=pipe.checkpoints_json)
-    else:
-        ds_kwargs = dict()
+    ds_kwargs = dict()
 
     gc.collect()
 
     from transformers import GPTNeoXLayer
 
-    if args.ds_inference:
-        pipe.model = deepspeed.init_inference(
-            pipe.model,
-            dtype=data_type,
-            mp_size=world_size,
-            replace_with_kernel_inject=args.use_kernel,
-            injection_policy={GPTNeoXLayer: ('attention.dense','mlp.dense_4h_to_h')},
-            max_tokens=args.max_tokens,
-            save_mp_checkpoint_path=args.save_mp_checkpoint_path,
-            **ds_kwargs,
-        )
+    pipe.model = deepspeed.init_inference(
+        pipe.model,
+        dtype=data_type,
+        mp_size=world_size,
+        replace_with_kernel_inject=args.use_kernel,
+        injection_policy={GPTNeoXLayer: ('attention.dense','mlp.dense_4h_to_h')},
+        max_tokens=args.max_tokens,
+        save_mp_checkpoint_path=args.save_mp_checkpoint_path,
+        **ds_kwargs,
+    )
 
     if local_rank == 0:
         see_memory_usage("after init_inference", True)
