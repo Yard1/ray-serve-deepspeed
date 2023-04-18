@@ -53,7 +53,7 @@ class Args(BaseModel):
     name: str
     hf_home: str
     checkpoint_path: str
-    batch_size: int = 8
+    batch_size: int = 32
     ds_inference: bool = True
     use_kernel: bool = False
     use_meta_tensor: bool = False
@@ -69,10 +69,17 @@ class Args(BaseModel):
 
 
 raw_args = os.getenv("APPLICATION_ARGS")
-assert raw_args is not None, "APPLICATION_ARGS env var must be set"
-print("Received args", raw_args)
-dict_args = yaml.load(raw_args, Loader=yaml.SafeLoader)
-print("Received args dict", dict_args)
+dict_args = {
+      "bucket_uri": "",
+      "name": "diegi97/dolly-v2-12b-sharded-bf16",
+      "hf_home": "/nvme/cache",
+      "checkpoint_path": "/nvme/model"
+}
+if raw_args:
+    assert raw_args is not None, "APPLICATION_ARGS env var must be set"
+    print("Received args", raw_args)
+    dict_args = yaml.load(raw_args, Loader=yaml.SafeLoader)
+    print("Received args dict", dict_args)
 args = Args.parse_obj(dict_args)
 
 
@@ -90,13 +97,15 @@ class DeepspeedApp(DeepSpeedPredictor):
             trainer_resources={"CPU": 0},
         )
 
+        self.checkpoint = Checkpoint.from_dict({"config": self.args})
         self.scaling_config = scaling_config
+        self.init_worker_group(scaling_config)
 
     @app.post("/")
     async def generate_text(self, prompt: Prompt):
         return await self.generate_text_batch(prompt)
 
-    @serve.batch(max_batch_size=args.batch_size)
+    @serve.batch(max_batch_size=args.batch_size, batch_wait_timeout_s=1)
     async def generate_text_batch(self, prompts: List[Prompt]):
         """Generate text from the given prompts in batch """
 
@@ -113,8 +122,8 @@ class DeepspeedApp(DeepSpeedPredictor):
                     worker.generate.remote(
                         data_ref,
                         column=input_column,
-                        do_sample=True,
-                        temperature=0.9,
+                        #do_sample=True,
+                        #temperature=0.9,
                         max_new_tokens=args.max_new_tokens,
                     )
                     for worker in self.prediction_workers

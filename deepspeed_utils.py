@@ -24,7 +24,7 @@ def init_model(
     if local_rank == 0:
         see_memory_usage("before init", True)
 
-    pipe = pipeline(model=args.model_name, torch_dtype=data_type, trust_remote_code=True, model_kwargs=dict(low_cpu_mem_usage=True))
+    pipe = pipeline(model=args.name, torch_dtype=data_type, trust_remote_code=True, model_kwargs=dict(low_cpu_mem_usage=True))
 
     if local_rank == 0:
         see_memory_usage("after init", True)

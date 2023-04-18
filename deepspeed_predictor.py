@@ -66,9 +66,13 @@ def _initialize_node(path_to_save_in:str, bucket_uri: Optional[str]=None):
 
 @ray.remote
 class PredictionWorker(TorchDistributedWorker):
-    def __init__(self, args: argparse.Namespace, rank: int, world_size: int):
-        self.args = args
-        self.rank = rank
+    """A PredictionWorker is a Ray remote actor that runs a single shard of a DeepSpeed job.
+    
+    Multiple PredictionWorkers of the same WorkerGroup will form a PyTorch DDP process
+    group and work together under the orchestration of DeepSpeed.
+    """
+    def __init__(self, config: argparse.Namespace, world_size: int):
+        self.config = config
         self.world_size = world_size
 
     def init_model(self, local_rank: int):
@@ -76,11 +80,11 @@ class PredictionWorker(TorchDistributedWorker):
         # Note: we have to provide the local_rank that was used to initiate
         # the DDP process group here. E.g., a PredictionWorker may be the
         # rank 0 worker of a group, but occupying gpu 7.
-        self.generator = init_model(self.args, self.world_size, local_rank)
+        self.generator = init_model(self.config, self.world_size, local_rank)
 
     def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
         return generate(
-            list(data[column]), self.generator, self.args.batch_size, **kwargs
+            list(data[column]), self.generator, self.config.batch_size, **kwargs
         )
 
 
