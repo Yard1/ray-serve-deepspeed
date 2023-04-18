@@ -81,7 +81,7 @@ args = Args.parse_obj(dict_args)
 )
 @serve.ingress(app)
 class DeepspeedApp(DeepSpeedPredictor):
-    def __init__(self, args: Args) -> None:
+    def __init__(self) -> None:
         self.args = args
 
         scaling_config = ScalingConfig(

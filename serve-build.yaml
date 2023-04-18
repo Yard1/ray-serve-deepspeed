@@ -3,7 +3,7 @@
 import_path: deepspeed_app:entrypoint
 
 runtime_env: 
-  working_dir: .
+  working_dir: https://github.com/Yard1/ray-serve-deepspeed/archive/refs/heads/dolly_v2.zip
   env_vars:
     APPLICATION_ARGS: |-
       bucket_uri: ""
@@ -20,6 +20,6 @@ port: 8000
 
 deployments:
 
-- name: DeepspeedApp2
-  num_replicas: 6
+- name: DeepspeedApp
+  num_replicas: 1
   route_prefix: /
