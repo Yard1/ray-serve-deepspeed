@@ -3,11 +3,11 @@
 import_path: deepspeed_app:entrypoint
 
 runtime_env: 
-  working_dir: https://github.com/tchordia/ray-serve-deepspeed/archive/refs/heads/master.zip
+  working_dir: .
   env_vars:
     APPLICATION_ARGS: |-
-      bucket_uri: "s3://large-dl-models-mirror/models--anyscale--opt-66b-resharded/main/"
-      name: "facebook/opt-66b"
+      bucket_uri: ""
+      name: "diegi97/dolly-v2-12b-sharded-bf16"
       hf_home: "/nvme/cache"
       checkpoint_path: "/nvme/model"
       

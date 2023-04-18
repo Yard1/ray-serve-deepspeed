@@ -53,18 +53,17 @@ class Args(BaseModel):
     name: str
     hf_home: str
     checkpoint_path: str
-    batch_size: int = 20
+    batch_size: int = 8
     ds_inference: bool = True
-    use_kernel: bool = True
-    use_meta_tensor: bool = True
+    use_kernel: bool = False
+    use_meta_tensor: bool = False
     num_worker_groups: int = 1
-    num_gpus_per_worker_group: int = 8
+    num_gpus_per_worker_group: int = 2
     reshard_checkpoint_path: Optional[str] = None
     use_cache: bool = True
 
-    max_new_tokens: int = 50
-    max_tokens: int = 1024
-    replace_method: int = False
+    max_new_tokens: int = 2048
+    max_tokens: int = 2048
     dtype: str = "float16"
     save_mp_checkpoint_path: Optional[str] = None
 
@@ -81,7 +80,7 @@ args = Args.parse_obj(dict_args)
     route_prefix="/", num_replicas=1,
 )
 @serve.ingress(app)
-class DeepspeedApp:
+class DeepspeedApp(DeepSpeedPredictor):
     def __init__(self, args: Args) -> None:
         self.args = args
 
@@ -92,7 +91,6 @@ class DeepspeedApp:
         )
 
         self.scaling_config = scaling_config
-        self.init_worker_group(scaling_config)
 
     @app.post("/")
     async def generate_text(self, prompt: Prompt):
@@ -117,7 +115,7 @@ class DeepspeedApp:
                         column=input_column,
                         do_sample=True,
                         temperature=0.9,
-                        max_length=100,
+                        max_new_tokens=args.max_new_tokens,
                     )
                     for worker in self.prediction_workers
                 ]
@@ -125,65 +123,6 @@ class DeepspeedApp:
         )[0]
         print("Predictions", prediction)
         return prediction[: len(prompts)]
-
-    def init_worker_group(self, scaling_config: ScalingConfig):
-        """Create the worker group.
-
-        Each worker in the group communicates with other workers through the
-        torch distributed backend. The worker group is inelastic (a failure of
-        one worker will destroy the entire group). Each worker in the group
-        recieves the same input data and outputs the same generated text.
-        """
-        args = self.args
-
-        # Start a placement group for the workers.
-        self.pg = scaling_config.as_placement_group_factory().to_placement_group()
-        prediction_worker_cls = PredictionWorker.options(
-            num_cpus=scaling_config.num_cpus_per_worker,
-            num_gpus=scaling_config.num_gpus_per_worker,
-            resources=scaling_config.additional_resources_per_worker,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=self.pg, placement_group_capture_child_tasks=True
-            ),
-        )
-        # Create the prediction workers.
-        self.prediction_workers = [
-            prediction_worker_cls.remote(args, i, scaling_config.num_workers)
-            for i in range(scaling_config.num_workers)
-        ]
-        # Get the IPs and ports of the workers.
-        self.prediction_workers_ips_ports = ray.get(
-            [
-                prediction_worker.get_address_and_port.remote()
-                for prediction_worker in self.prediction_workers
-            ]
-        )
-        # Rank 0 worker will be set as the master address for torch distributed.
-        rank_0_ip, rank_0_port = self.prediction_workers_ips_ports[0]
-
-        # Map from node ip to the workers on it
-        ip_dict = defaultdict(list)
-        for i, ip_port in enumerate(self.prediction_workers_ips_ports):
-            ip_dict[ip_port[0]].append(i)
-
-        # Configure local ranks and start the distributed backend on each worker.
-        # This assumes that there cannot be a situation where 2 worker groups use the
-        # same node.
-        tasks = []
-        for rank in range(len(self.prediction_workers)):
-            worker = self.prediction_workers[rank]
-            local_world_size = len(ip_dict[self.prediction_workers_ips_ports[rank][0]])
-            local_rank = ip_dict[self.prediction_workers_ips_ports[rank][0]].index(rank)
-            tasks.append(
-                worker.init_distributed.remote(
-                    local_rank, local_world_size, rank_0_ip, rank_0_port
-                )
-            )
-        ray.get(tasks)
-
-        # Initialize the model itself on each worker.
-        ray.get([worker.init_model.remote() for worker in self.prediction_workers])
-
 
 entrypoint = DeepspeedApp.bind()
 
