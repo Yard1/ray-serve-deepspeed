@@ -77,9 +77,11 @@ class PredictionWorker(TorchDistributedWorker):
 
     def init_model(self, local_rank: int):
         """Initialize model for inference"""
+        initialize_node(bucket_uri=self.config.bucket_uri)
         # Note: we have to provide the local_rank that was used to initiate
         # the DDP process group here. E.g., a PredictionWorker may be the
         # rank 0 worker of a group, but occupying gpu 7.
+        print(f"rank: {os.environ['RANK']} world size: {self.world_size} local_rank: {local_rank}")
         self.generator = init_model(self.config, self.world_size, local_rank)
 
     def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
@@ -122,6 +124,8 @@ class DeepSpeedPredictor(Predictor):
 
         # Initialize torch distributed process group for the workers.
         local_ranks = init_torch_dist_process_group(self.prediction_workers, backend="nccl")
+
+        print(self.prediction_workers, local_ranks)
 
         # Initialize model on each worker.
         ray.get([
