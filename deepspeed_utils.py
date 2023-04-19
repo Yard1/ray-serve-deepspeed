@@ -14,6 +14,7 @@ import torch
 from deepspeed.runtime.utils import see_memory_usage
 from huggingface_hub import snapshot_download
 from transformers import pipeline, Pipeline
+from deepspeed_pipeline import DSPipeline
 
 def init_model(
     args: argparse.Namespace, world_size: int, local_rank: int
@@ -25,7 +26,13 @@ def init_model(
         see_memory_usage("before init", True)
 
     pipe = pipeline(model=args.name, torch_dtype=data_type, trust_remote_code=True, model_kwargs=dict(low_cpu_mem_usage=True))
-
+    # pipe = DSPipeline(
+    #     model_name=args.name,
+    #     dtype=data_type,
+    #     is_meta=False,
+    #     device=local_rank,
+    #     #repo_root=args.repo_root,
+    # )
     if local_rank == 0:
         see_memory_usage("after init", True)
 
@@ -35,16 +42,17 @@ def init_model(
 
     from transformers import GPTNeoXLayer
 
-    pipe.model = deepspeed.init_inference(
-        pipe.model,
-        dtype=data_type,
-        mp_size=world_size,
-        replace_with_kernel_inject=args.use_kernel,
-        injection_policy={GPTNeoXLayer: ('attention.dense','mlp.dense_4h_to_h')},
-        max_tokens=args.max_tokens,
-        save_mp_checkpoint_path=args.save_mp_checkpoint_path,
-        **ds_kwargs,
-    )
+    if args.ds_inference:
+        pipe.model = deepspeed.init_inference(
+            pipe.model,
+            dtype=data_type,
+            mp_size=world_size,
+            replace_with_kernel_inject=args.use_kernel,
+            injection_policy={GPTNeoXLayer: ('attention.dense','mlp.dense_4h_to_h')},
+            max_tokens=args.max_tokens,
+            save_mp_checkpoint_path=args.save_mp_checkpoint_path,
+            **ds_kwargs,
+        )
 
     if local_rank == 0:
         see_memory_usage("after init_inference", True)
@@ -58,13 +66,12 @@ def init_model(
 
 
 def generate(
-    input_sentences: List[str], pipe: Pipeline, batch_size: int, **generate_kwargs
+    input_sentences: List[str], pipe: Pipeline, **generate_kwargs
 ) -> List[str]:
     """Generate predictions using a Pipeline"""
-    if batch_size > len(input_sentences):
-        # dynamically extend to support larger bs by repetition
-        input_sentences *= math.ceil(batch_size / len(input_sentences))
-
-    inputs = input_sentences[:batch_size]
-    outputs = pipe(inputs, **generate_kwargs)
+    outputs = pipe(
+        input_sentences,
+        #batch_size=len(input_sentences),
+        **generate_kwargs
+    )
     return outputs

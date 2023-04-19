@@ -37,6 +37,8 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 import yaml
 
+import ray
+
 app = FastAPI()
 
 
@@ -53,14 +55,14 @@ class Args(BaseModel):
     name: str
     hf_home: str
     checkpoint_path: str
-    batch_size: int = 32
-    # ds_inference: bool = True
+    batch_size: int = 1
+    ds_inference: bool = True
     use_kernel: bool = False
     # use_meta_tensor: bool = False
     num_worker_groups: int = 1
     num_gpus_per_worker_group: int = 2
     reshard_checkpoint_path: Optional[str] = None
-    use_cache: bool = True
+    # use_cache: bool = True
 
     max_new_tokens: int = 256
     max_tokens: int = 1024
@@ -83,8 +85,25 @@ if raw_args:
 args = Args.parse_obj(dict_args)
 
 
+ray.init(
+    address="auto",
+    runtime_env={
+        "pip": [
+            "numpy==1.23",
+            "protobuf==3.20.0",
+            "transformers==4.28.1",
+            "accelerate==0.18.0",
+            "deepspeed==0.9.0",
+        ],
+        "env_vars": {
+            "HF_HUB_DISABLE_PROGRESS_BARS": "1",
+            #"HF_HOME": args.hf_home
+        }
+    }
+)
+
 @serve.deployment(
-    route_prefix="/", num_replicas=1,
+    route_prefix="/", num_replicas=args.num_worker_groups,
 )
 @serve.ingress(app)
 class DeepspeedApp(DeepSpeedPredictor):
@@ -122,8 +141,8 @@ class DeepspeedApp(DeepSpeedPredictor):
                     worker.generate.remote(
                         data_ref,
                         column=input_column,
-                        do_sample=True,
-                        temperature=0.9,
+                        #do_sample=True,
+                        #temperature=0.9,
                         max_new_tokens=args.max_new_tokens,
                     )
                     for worker in self.prediction_workers

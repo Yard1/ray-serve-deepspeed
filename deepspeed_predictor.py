@@ -36,7 +36,9 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def initialize_node(bucket_uri: Optional[str]=None, path_to_save_in: str = "/nvme/model"):
+def initialize_node(bucket_uri: Optional[str]=None, hf_home: str="/nvme/cache", path_to_save_in: str = "/nvme/model"):
+    os.environ["HF_HOME"] = hf_home
+    
     # Timeout in 10 minutes
     lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)
     with lock:
@@ -77,16 +79,17 @@ class PredictionWorker(TorchDistributedWorker):
 
     def init_model(self, local_rank: int):
         """Initialize model for inference"""
-        initialize_node(bucket_uri=self.config.bucket_uri)
+        initialize_node(bucket_uri=self.config.bucket_uri, hf_home=self.config.hf_home)
         # Note: we have to provide the local_rank that was used to initiate
         # the DDP process group here. E.g., a PredictionWorker may be the
         # rank 0 worker of a group, but occupying gpu 7.
-        print(f"rank: {os.environ['RANK']} world size: {self.world_size} local_rank: {local_rank}")
+        print(f"rank: {os.environ['RANK']} world size: {self.world_size} local_rank: {local_rank}", flush=True)
         self.generator = init_model(self.config, self.world_size, local_rank)
 
     def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
+        print(f"Processing batch {data}")
         return generate(
-            list(data[column]), self.generator, self.config.batch_size, **kwargs
+            list(data[column]), self.generator, **kwargs
         )
 
 
