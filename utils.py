@@ -10,7 +10,7 @@ from filelock import FileLock
 
 from huggingface_utils import download_model
 
-logger = logging.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def timeit(func):
