@@ -1,8 +1,8 @@
+import logging
 import os
 import subprocess
 import time
 from functools import wraps
-from logging import Logger
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +10,7 @@ from filelock import FileLock
 
 from huggingface_utils import download_model
 
-logger = Logger(__name__)
+logger = logging.get_logger(__name__)
 
 
 def timeit(func):
