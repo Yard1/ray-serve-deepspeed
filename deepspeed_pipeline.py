@@ -52,7 +52,9 @@ class DSPipeline:
             with deepspeed.OnDevice(dtype=dtype, device="meta"):
                 self.model = AutoModelForCausalLM.from_config(self.config)
         else:
-            self.model = AutoModelForCausalLM.from_pretrained(self.model_name, torch_dtype=dtype, low_cpu_mem_usage=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name, torch_dtype=dtype, low_cpu_mem_usage=True
+            )
 
         self.model.eval()
 
@@ -80,7 +82,7 @@ class DSPipeline:
                 # Possible choices are "bloom", "ds_model", "Megatron"
                 "type": "bloom",
                 "checkpoints": file_list,
-                "version": 1.0
+                "version": 1.0,
             }
             json.dump(data, f)
 

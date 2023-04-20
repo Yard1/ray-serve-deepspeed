@@ -1,5 +1,6 @@
 import gc
 import os
+import subprocess
 from collections import defaultdict
 from unittest.mock import patch
 
@@ -115,3 +116,32 @@ def reshard_checkpoint(model_name_or_path, dtype, path_to_save_in):
             del model
             gc.collect()
     return path_to_save_in
+
+
+def download_model(model_name: str, bucket_uri: str):
+    from transformers.utils.hub import TRANSFORMERS_CACHE
+
+    path = os.path.expanduser(
+        os.path.join(TRANSFORMERS_CACHE, f"models--{model_name.replace('/', '--')}")
+    )
+    subprocess.run(["mkdir", "-p", os.path.join(path, "snapshots", "main")])
+    subprocess.run(["mkdir", "-p", os.path.join(path, "refs")])
+    if os.path.exists(os.path.join(path, "refs", "main")):
+        return
+    subprocess.run(
+        [
+            "aws",
+            "s3",
+            "sync",
+            "--quiet",
+            bucket_uri,
+            os.path.join(path, "snapshots", "main"),
+        ]
+    )
+    with open(os.path.join(path, "snapshots", "main", "hash"), "r") as f:
+        f_hash = f.read().strip()
+    with open(os.path.join(path, "refs", "main"), "w") as f:
+        f.write(f_hash)
+    os.rename(
+        os.path.join(path, "snapshots", "main"), os.path.join(path, "snapshots", f_hash)
+    )

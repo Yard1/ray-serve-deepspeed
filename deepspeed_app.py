@@ -1,43 +1,24 @@
-from ray import serve
-from fastapi import FastAPI
-from pydantic import BaseModel
-from ray import serve
-import os
-from dataclasses import dataclass
 import asyncio
-
-from pathlib import Path
-
-
 import os
-from argparse import ArgumentParser
-
-import pandas as pd
-import ray
-import ray.util
-from ray.air import Checkpoint, ScalingConfig
-from ray.train.batch_predictor import BatchPredictor
-
 import subprocess
-
-
-from deepspeed_predictor import DeepSpeedPredictor, PredictionWorker, initialize_node
-
-from dataclasses import dataclass
-
-import os
+from argparse import ArgumentParser
 from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import pandas as pd
 import ray
 import ray.util
-from ray.air import ScalingConfig
+import yaml
+from fastapi import FastAPI
+from pydantic import BaseModel
+from ray import serve
+from ray.air import Checkpoint, ScalingConfig
+from ray.train.batch_predictor import BatchPredictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-import yaml
-
-import ray
+from deepspeed_predictor import DeepSpeedPredictor, PredictionWorker, initialize_node
 
 app = FastAPI()
 
@@ -59,7 +40,7 @@ class Args(BaseModel):
     ds_inference: bool = True
     use_kernel: bool = False
     # use_meta_tensor: bool = False
-    num_worker_groups: int = 1
+    num_worker_groups: int = 2
     num_gpus_per_worker_group: int = 2
     reshard_checkpoint_path: Optional[str] = None
     # use_cache: bool = True
@@ -72,10 +53,10 @@ class Args(BaseModel):
 
 raw_args = os.getenv("APPLICATION_ARGS")
 dict_args = {
-      "bucket_uri": "",
-      "name": "diegi97/dolly-v2-12b-sharded-bf16",
-      "hf_home": "/nvme/cache",
-      "checkpoint_path": "/nvme/model"
+    "bucket_uri": "s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/",
+    "name": "diegi97/dolly-v2-12b-sharded-bf16",
+    "hf_home": "/nvme/cache",
+    "checkpoint_path": "/nvme/model",
 }
 if raw_args:
     assert raw_args is not None, "APPLICATION_ARGS env var must be set"
@@ -97,13 +78,21 @@ ray.init(
         ],
         "env_vars": {
             "HF_HUB_DISABLE_PROGRESS_BARS": "1",
-            #"HF_HOME": args.hf_home
-        }
-    }
+            # "HF_HOME": args.hf_home
+        },
+    },
 )
 
+
 @serve.deployment(
-    route_prefix="/", num_replicas=args.num_worker_groups,
+    route_prefix="/",
+    autoscaling_config={
+        "min_replicas": 1,
+        "initial_replicas": 2,
+        "max_replicas": 8,
+    },
+    ray_actor_options={"resources": {"worker_node": 0.5}},
+    max_concurrent_queries=2,  # Maximum backlog for a single replica
 )
 @serve.ingress(app)
 class DeepspeedApp(DeepSpeedPredictor):
@@ -114,6 +103,7 @@ class DeepspeedApp(DeepSpeedPredictor):
             use_gpu=True,
             num_workers=args.num_gpus_per_worker_group,
             trainer_resources={"CPU": 0},
+            resources_per_worker={"CPU": 4, "GPU": 1},
         )
 
         self.checkpoint = Checkpoint.from_dict({"config": self.args})
@@ -126,7 +116,7 @@ class DeepspeedApp(DeepSpeedPredictor):
 
     @serve.batch(max_batch_size=args.batch_size, batch_wait_timeout_s=1)
     async def generate_text_batch(self, prompts: List[Prompt]):
-        """Generate text from the given prompts in batch """
+        """Generate text from the given prompts in batch"""
 
         print("Received prompts", prompts)
         input_column = "predict"
@@ -141,8 +131,8 @@ class DeepspeedApp(DeepSpeedPredictor):
                     worker.generate.remote(
                         data_ref,
                         column=input_column,
-                        #do_sample=True,
-                        #temperature=0.9,
+                        # do_sample=True,
+                        # temperature=0.9,
                         max_new_tokens=args.max_new_tokens,
                     )
                     for worker in self.prediction_workers
@@ -151,6 +141,7 @@ class DeepspeedApp(DeepSpeedPredictor):
         )[0]
         print("Predictions", prediction)
         return prediction[: len(prompts)]
+
 
 entrypoint = DeepspeedApp.bind()
 

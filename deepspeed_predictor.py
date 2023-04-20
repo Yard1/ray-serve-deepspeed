@@ -1,32 +1,29 @@
 import argparse
 import os
 import socket
+import subprocess
 from collections import defaultdict
 from contextlib import closing
 from datetime import timedelta
-from typing import List, Optional
-import subprocess
 from pathlib import Path
+from typing import List, Optional
 
 import pandas as pd
 import ray
 import ray.util
 import torch.distributed as dist
+from filelock import FileLock, Timeout
 from ray.air import Checkpoint, ScalingConfig
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.train.predictor import Predictor
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
 from ray.air.util.torch_dist import (
     TorchDistributedWorker,
     init_torch_dist_process_group,
 )
+from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
+from ray.train.predictor import Predictor
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from deepspeed_utils import generate, init_model
-from huggingface_utils import reshard_checkpoint
-
-
-from filelock import Timeout, FileLock
+from huggingface_utils import download_model, reshard_checkpoint
 
 
 def find_free_port() -> int:
@@ -36,9 +33,14 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def initialize_node(bucket_uri: Optional[str]=None, hf_home: str="/nvme/cache", path_to_save_in: str = "/nvme/model"):
+def initialize_node(
+    model_name: Optional[str] = None,
+    bucket_uri: Optional[str] = None,
+    hf_home: str = "/nvme/cache",
+    path_to_save_in: str = "/nvme/model",
+):
     os.environ["HF_HOME"] = hf_home
-    
+
     # Timeout in 10 minutes
     lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)
     with lock:
@@ -47,11 +49,17 @@ def initialize_node(bucket_uri: Optional[str]=None, hf_home: str="/nvme/cache", 
             return
         else:
             print("Executing node initialization...")
-            _initialize_node(bucket_uri=bucket_uri, path_to_save_in=path_to_save_in)
+            _initialize_node(
+                bucket_uri=bucket_uri,
+                model_name=model_name,
+            )
             subprocess.run("touch /nvme/.done", shell=True, check=True)
 
 
-def _initialize_node(path_to_save_in:str, bucket_uri: Optional[str]=None):
+def _initialize_node(
+    model_name: Optional[str] = None,
+    bucket_uri: Optional[str] = None,
+):
     # Mount nvme
     print("Mounting nvme")
     subprocess.run(
@@ -60,37 +68,37 @@ def _initialize_node(path_to_save_in:str, bucket_uri: Optional[str]=None):
     )
 
     if bucket_uri:
-        subprocess.run(
-            ["aws", "s3", "sync", "--no-progress", bucket_uri, path_to_save_in,], check=True
-        )
+        download_model(model_name, bucket_uri)
     print("Done downloading the model")
 
 
 @ray.remote
 class PredictionWorker(TorchDistributedWorker):
     """A PredictionWorker is a Ray remote actor that runs a single shard of a DeepSpeed job.
-    
+
     Multiple PredictionWorkers of the same WorkerGroup will form a PyTorch DDP process
     group and work together under the orchestration of DeepSpeed.
     """
+
     def __init__(self, config: argparse.Namespace, world_size: int):
         self.config = config
         self.world_size = world_size
 
     def init_model(self, local_rank: int):
         """Initialize model for inference"""
-        initialize_node(bucket_uri=self.config.bucket_uri, hf_home=self.config.hf_home)
+        initialize_node(
+            model_name=self.config.name,
+            bucket_uri=self.config.bucket_uri,
+            hf_home=self.config.hf_home,
+        )
         # Note: we have to provide the local_rank that was used to initiate
         # the DDP process group here. E.g., a PredictionWorker may be the
         # rank 0 worker of a group, but occupying gpu 7.
-        print(f"rank: {os.environ['RANK']} world size: {self.world_size} local_rank: {local_rank}", flush=True)
         self.generator = init_model(self.config, self.world_size, local_rank)
 
     def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
         print(f"Processing batch {data}")
-        return generate(
-            list(data[column]), self.generator, **kwargs
-        )
+        return generate(list(data[column]), self.generator, **kwargs)
 
 
 class DeepSpeedPredictor(Predictor):
@@ -126,22 +134,26 @@ class DeepSpeedPredictor(Predictor):
         ]
 
         # Initialize torch distributed process group for the workers.
-        local_ranks = init_torch_dist_process_group(self.prediction_workers, backend="nccl")
+        local_ranks = init_torch_dist_process_group(
+            self.prediction_workers, backend="nccl"
+        )
 
         print(self.prediction_workers, local_ranks)
 
         # Initialize model on each worker.
-        ray.get([
-            worker.init_model.remote(local_rank)
-            for worker, local_rank in zip(self.prediction_workers, local_ranks)
-        ])
+        ray.get(
+            [
+                worker.init_model.remote(local_rank)
+                for worker, local_rank in zip(self.prediction_workers, local_ranks)
+            ]
+        )
 
     def _predict_pandas(
         self,
         data: pd.DataFrame,
         input_column: str = "prompt",
         output_column: str = "output",
-        **kwargs
+        **kwargs,
     ) -> pd.DataFrame:
         data_ref = ray.put(data)
         prediction = ray.get(
