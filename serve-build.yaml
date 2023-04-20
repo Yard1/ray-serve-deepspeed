@@ -3,16 +3,12 @@
 import_path: deepspeed_app:entrypoint
 
 runtime_env: 
-  working_dir: https://github.com/Yard1/ray-serve-deepspeed/archive/refs/heads/dolly_v2.zip
   env_vars:
     APPLICATION_ARGS: |-
-      bucket_uri: ""
+      bucket_uri: "s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/"
       name: "diegi97/dolly-v2-12b-sharded-bf16"
       hf_home: "/nvme/cache"
-      checkpoint_path: "/nvme/model"
-      
-
-
+    HF_HOME: "/nvme/cache"
 
 host: 0.0.0.0
 
@@ -21,5 +17,18 @@ port: 8000
 deployments:
 
 - name: DeepspeedApp
-  num_replicas: 1
   route_prefix: /
+  max_concurrent_queries: 2
+  autoscaling_config:
+    min_replicas: 1
+    initial_replicas: 2
+    max_replicas: 8
+    target_num_ongoing_requests_per_replica: 1.0
+    metrics_interval_s: 10.0
+    look_back_period_s: 30.0
+    smoothing_factor: 1.0
+    downscale_delay_s: 600.0
+    upscale_delay_s: 30.0
+  ray_actor_options:
+    resources:
+      worker_node: 0.5

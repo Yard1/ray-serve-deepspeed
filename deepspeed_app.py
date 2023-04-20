@@ -1,11 +1,7 @@
 import asyncio
 import os
-import subprocess
 from argparse import ArgumentParser
-from collections import defaultdict
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import pandas as pd
 import ray
@@ -15,10 +11,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from ray import serve
 from ray.air import Checkpoint, ScalingConfig
-from ray.train.batch_predictor import BatchPredictor
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from deepspeed_predictor import DeepSpeedPredictor, PredictionWorker, initialize_node
+from deepspeed_predictor import DeepSpeedPredictor
 
 app = FastAPI()
 
@@ -31,11 +25,9 @@ class Args(BaseModel):
     # bucket_uri: str = "s3://large-dl-models-mirror/models--anyscale--opt-66b-resharded/main/"
     # name: str = "facebook/opt-66b"
     # hf_home: str = "/nvme/cache"
-    # checkpoint_path: str = "/nvme/model"
     bucket_uri: str
     name: str
     hf_home: str
-    checkpoint_path: str
     batch_size: int = 1
     ds_inference: bool = True
     use_kernel: bool = False
@@ -56,7 +48,6 @@ dict_args = {
     "bucket_uri": "s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/",
     "name": "diegi97/dolly-v2-12b-sharded-bf16",
     "hf_home": "/nvme/cache",
-    "checkpoint_path": "/nvme/model",
 }
 if raw_args:
     assert raw_args is not None, "APPLICATION_ARGS env var must be set"
@@ -76,11 +67,9 @@ ray.init(
             "accelerate==0.18.0",
             "deepspeed==0.9.0",
         ],
-        "env_vars": {
-            "HF_HUB_DISABLE_PROGRESS_BARS": "1",
-            # "HF_HOME": args.hf_home
-        },
+        "env_vars": {"HF_HUB_DISABLE_PROGRESS_BARS": "1"},
     },
+    ignore_reinit_error=True,
 )
 
 

@@ -1,8 +1,8 @@
+import math
 import random
 import time
-from datetime import datetime, timedelta, timezone
 
-from locust import HttpUser, task
+from locust import HttpUser, LoadTestShape, TaskSet, constant, task
 
 prompts = [
     "When was George Washington president?",
@@ -15,11 +15,6 @@ prompts = [
     "Explain what is machine learning like I am five years old.",
     "Explain what is artifical intelligence.",
 ]
-
-
-import math
-from locust import HttpUser, TaskSet, task, constant
-from locust import LoadTestShape
 
 
 class UserTasks(TaskSet):
@@ -36,8 +31,6 @@ class UserTasks(TaskSet):
                 print("Got the wrong response!", response)
                 print("Got the wrong response!", response.status_code)
                 print("Got the wrong response!", response.text)
-            else:
-                output_json = response.json()
 
         time.sleep(1)
 
@@ -63,7 +56,7 @@ class DoubleWave(LoadTestShape):
     min_users = 20
     peak_one_users = 60
     peak_two_users = 40
-    time_limit = 1200
+    time_limit = 3600
 
     def tick(self):
         run_time = round(self.get_run_time())

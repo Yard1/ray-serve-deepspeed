@@ -4,12 +4,8 @@ import subprocess
 from collections import defaultdict
 from unittest.mock import patch
 
-import deepspeed
 import torch
 from filelock import FileLock
-from transformers import AutoModelForCausalLM
-from transformers.modeling_utils import dtype_byte_size
-from transformers.utils.hub import convert_file_size_to_int
 
 
 def shard_checkpoint_contiguous(
@@ -19,6 +15,10 @@ def shard_checkpoint_contiguous(
     Same as transformers.modeling_utils.shard_checkpoint, but shards each layer
     into its own file to mitigate https://github.com/microsoft/DeepSpeed/issues/3084.
     """
+    # Lazy import so that the new cache location is used
+    from transformers.modeling_utils import dtype_byte_size
+    from transformers.utils.hub import convert_file_size_to_int
+
     max_shard_size = convert_file_size_to_int(max_shard_size)
 
     sharded_state_dicts = []
@@ -94,6 +94,9 @@ def reshard_checkpoint(model_name_or_path, dtype, path_to_save_in):
     Loads a transformers model into CPU memory, reshards and saves it to mitigate
     https://github.com/microsoft/DeepSpeed/issues/3084.
     """
+    import deepspeed
+    from transformers import AutoModelForCausalLM
+
     with FileLock(f"{path_to_save_in}.lock"):
         # We use a done marker file so that the other ranks do not
         # go through the process again.
@@ -121,6 +124,7 @@ def reshard_checkpoint(model_name_or_path, dtype, path_to_save_in):
 def download_model(model_name: str, bucket_uri: str):
     from transformers.utils.hub import TRANSFORMERS_CACHE
 
+    print(f"Downloading {model_name} to '{TRANSFORMERS_CACHE}'")
     path = os.path.expanduser(
         os.path.join(TRANSFORMERS_CACHE, f"models--{model_name.replace('/', '--')}")
     )

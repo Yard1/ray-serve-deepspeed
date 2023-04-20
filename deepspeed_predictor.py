@@ -1,75 +1,19 @@
 import argparse
-import os
-import socket
-import subprocess
-from collections import defaultdict
-from contextlib import closing
-from datetime import timedelta
-from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import pandas as pd
 import ray
 import ray.util
-import torch.distributed as dist
-from filelock import FileLock, Timeout
 from ray.air import Checkpoint, ScalingConfig
 from ray.air.util.torch_dist import (
     TorchDistributedWorker,
     init_torch_dist_process_group,
 )
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.predictor import Predictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from deepspeed_utils import generate, init_model
-from huggingface_utils import download_model, reshard_checkpoint
-
-
-def find_free_port() -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
-def initialize_node(
-    model_name: Optional[str] = None,
-    bucket_uri: Optional[str] = None,
-    hf_home: str = "/nvme/cache",
-    path_to_save_in: str = "/nvme/model",
-):
-    os.environ["HF_HOME"] = hf_home
-
-    # Timeout in 10 minutes
-    lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)
-    with lock:
-        if Path("/nvme/.done").exists():
-            print("Skipping node initialization...")
-            return
-        else:
-            print("Executing node initialization...")
-            _initialize_node(
-                bucket_uri=bucket_uri,
-                model_name=model_name,
-            )
-            subprocess.run("touch /nvme/.done", shell=True, check=True)
-
-
-def _initialize_node(
-    model_name: Optional[str] = None,
-    bucket_uri: Optional[str] = None,
-):
-    # Mount nvme
-    print("Mounting nvme")
-    subprocess.run(
-        'drive_name="${1:-/dev/nvme1n1}"; mount_path="${2:-/nvme}"; set -x; sudo file -s "$drive_name"; sudo apt install xfsprogs -y; sudo mkfs -t xfs "$drive_name"; sudo mkdir "$mount_path" && sudo mount "$drive_name" "$mount_path" && sudo chown -R ray "$mount_path"',
-        shell=True,
-    )
-
-    if bucket_uri:
-        download_model(model_name, bucket_uri)
-    print("Done downloading the model")
+from utils import initialize_node
 
 
 @ray.remote

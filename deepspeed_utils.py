@@ -2,24 +2,27 @@
 
 import argparse
 import gc
-import io
-import json
-import math
-import os
-from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 
-import deepspeed
-import torch
-from deepspeed.runtime.utils import see_memory_usage
-from huggingface_hub import snapshot_download
-from transformers import Pipeline, pipeline
+from utils import timeit
 
-from deepspeed_pipeline import DSPipeline
+if TYPE_CHECKING:
+    from transformers import Pipeline
 
 
-def init_model(args: argparse.Namespace, world_size: int, local_rank: int) -> Pipeline:
+@timeit
+def init_model(
+    args: argparse.Namespace, world_size: int, local_rank: int
+) -> "Pipeline":
     """Initialize the deepspeed model"""
+    # Lazy import so that the new cache location is used
+    import deepspeed
+    import torch
+    from deepspeed.runtime.utils import see_memory_usage
+    from transformers import pipeline
+
+    # from deepspeed_pipeline import DSPipeline
+
     data_type = getattr(torch, args.dtype)
 
     if local_rank == 0:
@@ -70,8 +73,9 @@ def init_model(args: argparse.Namespace, world_size: int, local_rank: int) -> Pi
     return pipe
 
 
+@timeit
 def generate(
-    input_sentences: List[str], pipe: Pipeline, **generate_kwargs
+    input_sentences: List[str], pipe: "Pipeline", **generate_kwargs
 ) -> List[str]:
     """Generate predictions using a Pipeline"""
     outputs = pipe(

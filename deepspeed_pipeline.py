@@ -1,18 +1,12 @@
 # DeepSpeed inference related utils.
 # Modeled after https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/text-generation
 
-import gc
 import io
 import json
-import math
 import os
 from pathlib import Path
-from typing import List
 
-import deepspeed
 import torch
-from deepspeed.runtime.utils import see_memory_usage
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, pipeline
 
 
 class DSPipeline:
@@ -29,6 +23,10 @@ class DSPipeline:
         device=-1,
         repo_root=None,
     ):
+        # Lazy import so that the new cache location is used
+        import deepspeed
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
         self.model_name = model_name
         self.dtype = dtype
 
