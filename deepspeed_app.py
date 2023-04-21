@@ -65,7 +65,7 @@ ray.init(
             "protobuf==3.20.0",
             "transformers==4.28.1",
             "accelerate==0.18.0",
-            "deepspeed==0.9.0",
+            "deepspeed==0.9.1",
         ],
         "env_vars": {"HF_HUB_DISABLE_PROGRESS_BARS": "1"},
     },

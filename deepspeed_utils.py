@@ -4,6 +4,7 @@ import argparse
 import gc
 from typing import TYPE_CHECKING, List
 
+from fast_pipeline import FastPipeline
 from utils import timeit
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ def init_model(
     import deepspeed
     import torch
     from deepspeed.runtime.utils import see_memory_usage
-    from transformers import pipeline
+    from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
     # from deepspeed_pipeline import DSPipeline
 
@@ -28,12 +29,12 @@ def init_model(
     if local_rank == 0:
         see_memory_usage("before init", True)
 
-    pipe = pipeline(
-        model=args.name,
-        torch_dtype=data_type,
-        trust_remote_code=True,
-        model_kwargs=dict(low_cpu_mem_usage=True),
-    )
+    # pipe = pipeline(
+    #     model=args.name,
+    #     torch_dtype=data_type,
+    #     trust_remote_code=True,
+    #     model_kwargs=dict(low_cpu_mem_usage=True, use_cache=True),
+    # )
     # pipe = DSPipeline(
     #     model_name=args.name,
     #     dtype=data_type,
@@ -41,6 +42,12 @@ def init_model(
     #     device=local_rank,
     #     #repo_root=args.repo_root,
     # )
+
+    tokenizer = AutoTokenizer.from_pretrained(args.name, padding_side="left")
+    model = AutoModelForCausalLM.from_pretrained(
+        args.name, low_cpu_mem_usage=True, torch_dtype=data_type, use_cache=True
+    )
+
     if local_rank == 0:
         see_memory_usage("after init", True)
 
@@ -48,15 +55,20 @@ def init_model(
 
     gc.collect()
 
-    from transformers import GPTNeoXLayer
+    from transformers import GPTNeoXForCausalLM, GPTNeoXLayer
 
     if args.ds_inference:
-        pipe.model = deepspeed.init_inference(
-            pipe.model,
+        if isinstance(model, GPTNeoXForCausalLM):
+            injection_policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
+        else:
+            injection_policy = None
+
+        model = deepspeed.init_inference(
+            model,
             dtype=data_type,
             mp_size=world_size,
             replace_with_kernel_inject=args.use_kernel,
-            injection_policy={GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")},
+            injection_policy=injection_policy,
             max_tokens=args.max_tokens,
             save_mp_checkpoint_path=args.save_mp_checkpoint_path,
             **ds_kwargs,
@@ -65,10 +77,11 @@ def init_model(
     if local_rank == 0:
         see_memory_usage("after init_inference", True)
 
-    pipe.device = torch.device(f"cuda:{local_rank}")
-    pipe.model.cuda().to(pipe.device)
+    device = torch.device(f"cuda:{local_rank}")
+    model.cuda().to(device)
     # Add this attribute for compatibility with the pipeline
-    pipe.model.device = pipe.device
+    model.device = device
+    pipe = FastPipeline(model=model, tokenizer=tokenizer, device=device)
 
     return pipe
 

@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import sys
 import time
 from functools import wraps
 from pathlib import Path
@@ -19,7 +20,7 @@ def timeit(func):
         start_time = time.monotonic()
         ret = func(*args, **kwargs)
         time_taken = time.monotonic() - start_time
-        logger.info(f"{func} took {time_taken} s to complete")
+        print(f"{func} took {time_taken} s to complete", file=sys.stderr)
         return ret
 
     return inner
