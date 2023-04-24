@@ -51,6 +51,9 @@ def get_special_token_id(tokenizer: PreTrainedTokenizer, key: str) -> int:
 
 
 class FastPipeline:
+    """Essentially a Transformers Pipeline, stripped down to bare essentials +
+    InstructPipeline logic."""
+
     def __init__(self, model, tokenizer, device=None) -> None:
         self.model = model
         self.tokenizer = tokenizer

@@ -1,8 +1,7 @@
 import math
 import random
-import time
 
-from locust import HttpUser, LoadTestShape, TaskSet, constant, task
+from locust import HttpUser, LoadTestShape, TaskSet, between, task
 
 prompts = [
     "When was George Washington president?",
@@ -32,43 +31,77 @@ class UserTasks(TaskSet):
                 print("Got the wrong response!", response.status_code)
                 print("Got the wrong response!", response.text)
 
-        time.sleep(1)
-
 
 class WebsiteUser(HttpUser):
-    wait_time = constant(0.5)
+    #    wait_time = between(5, 60)
+    wait_time = between(1, 2)
     tasks = [UserTasks]
 
 
-class DoubleWave(LoadTestShape):
+class StagesShape(LoadTestShape):
     """
-    A shape to imitate some specific user behaviour. In this example, midday
-    and evening meal times. First peak of users appear at time_limit/3 and
-    second peak appears at 2*time_limit/3
+    A simply load test shape class that has different user and spawn_rate at
+    different stages.
 
-    Settings:
-        min_users -- minimum users
-        peak_one_users -- users in first peak
-        peak_two_users -- users in second peak
-        time_limit -- total length of test
+    Keyword arguments:
+
+        stages -- A list of dicts, each representing a stage with the following keys:
+            duration -- When this many seconds pass the test is advanced to the next stage
+            users -- Total user count
+            spawn_rate -- Number of users to start/stop per second
+            stop -- A boolean that can stop that test at a specific stage
+
+        stop_at_end -- Can be set to stop once all stages have run.
     """
 
-    min_users = 20
-    peak_one_users = 60
-    peak_two_users = 40
-    time_limit = 3600
+    stages = [
+        {"duration": 100, "users": 10, "spawn_rate": 10},
+        {"duration": 800, "users": 100, "spawn_rate": 8},
+        {"duration": 1800, "users": 100, "spawn_rate": 100},
+        {"duration": 800, "users": 100, "spawn_rate": 8},
+        {"duration": 100, "users": 10, "spawn_rate": 10},
+    ]
 
     def tick(self):
-        run_time = round(self.get_run_time())
+        run_time = self.get_run_time()
 
-        if run_time < self.time_limit:
-            user_count = (
-                (self.peak_one_users - self.min_users)
-                * math.e ** -(((run_time / (self.time_limit / 10 * 2 / 3)) - 5) ** 2)
-                + (self.peak_two_users - self.min_users)
-                * math.e ** -(((run_time / (self.time_limit / 10 * 2 / 3)) - 10) ** 2)
-                + self.min_users
-            )
-            return (round(user_count), round(user_count))
-        else:
-            return None
+        for stage in self.stages:
+            if run_time < stage["duration"]:
+                tick_data = (stage["users"], stage["spawn_rate"])
+                return tick_data
+
+        return None
+
+
+# class DoubleWave(LoadTestShape):
+#     """
+#     A shape to imitate some specific user behaviour. In this example, midday
+#     and evening meal times. First peak of users appear at time_limit/3 and
+#     second peak appears at 2*time_limit/3
+
+#     Settings:
+#         min_users -- minimum users
+#         peak_one_users -- users in first peak
+#         peak_two_users -- users in second peak
+#         time_limit -- total length of test
+#     """
+
+#     min_users = 10
+#     peak_one_users = 80
+#     peak_two_users = 60
+#     time_limit = 3600
+
+#     def tick(self):
+#         run_time = round(self.get_run_time())
+
+#         if run_time < self.time_limit:
+#             user_count = (
+#                 (self.peak_one_users - self.min_users)
+#                 * math.e ** -(((run_time / (self.time_limit / 10 * 2 / 3)) - 5) ** 2)
+#                 + (self.peak_two_users - self.min_users)
+#                 * math.e ** -(((run_time / (self.time_limit / 10 * 2 / 3)) - 10) ** 2)
+#                 + self.min_users
+#             )
+#             return (round(user_count), round(user_count))
+#         else:
+#             return None
