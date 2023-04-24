@@ -114,8 +114,6 @@ class DeepspeedApp(DeepSpeedPredictor):
                     worker.generate.remote(
                         data_ref,
                         column=input_column,
-                        # do_sample=True,
-                        # temperature=0.9,
                         max_new_tokens=args.max_new_tokens,
                     )
                     for worker in self.prediction_workers

@@ -2,19 +2,16 @@
 
 import argparse
 import gc
-from typing import TYPE_CHECKING, List
+from typing import List
 
 from fast_pipeline import FastPipeline
 from utils import timeit
-
-if TYPE_CHECKING:
-    from transformers import Pipeline
 
 
 @timeit
 def init_model(
     args: argparse.Namespace, world_size: int, local_rank: int
-) -> "Pipeline":
+) -> FastPipeline:
     """Initialize the deepspeed model"""
     # Lazy import so that the new cache location is used
     import deepspeed
@@ -83,17 +80,22 @@ def init_model(
     model.device = device
     pipe = FastPipeline(model=model, tokenizer=tokenizer, device=device)
 
+    # Warmup
+    generate(["Test"], pipe)
+
     return pipe
 
 
 @timeit
 def generate(
-    input_sentences: List[str], pipe: "Pipeline", **generate_kwargs
+    input_sentences: List[str], pipe: FastPipeline, **generate_kwargs
 ) -> List[str]:
     """Generate predictions using a Pipeline"""
+    generate_kwargs.setdefault("do_sample", True)
+    generate_kwargs.setdefault("top_p", 0.92)
+    generate_kwargs.setdefault("top_k", 0)
     outputs = pipe(
         input_sentences,
-        # batch_size=len(input_sentences),
         **generate_kwargs,
     )
     return outputs
