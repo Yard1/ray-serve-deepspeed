@@ -1,6 +1,5 @@
 import asyncio
 import os
-from argparse import ArgumentParser
 from typing import List, Optional
 
 import pandas as pd
@@ -44,11 +43,6 @@ class Args(BaseModel):
 
 
 raw_args = os.getenv("APPLICATION_ARGS")
-dict_args = {
-    "bucket_uri": "s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/",
-    "name": "diegi97/dolly-v2-12b-sharded-bf16",
-    "hf_home": "/nvme/cache",
-}
 if raw_args:
     assert raw_args is not None, "APPLICATION_ARGS env var must be set"
     print("Received args", raw_args)
@@ -107,7 +101,7 @@ class DeepspeedApp(DeepSpeedPredictor):
     async def generate_text_batch(self, prompts: List[Prompt]):
         """Generate text from the given prompts in batch"""
 
-        print("Received prompts", prompts)
+        print(f"Received {len(prompts)} prompts", prompts)
         input_column = "predict"
         #  Wrap in pandas
         data = pd.DataFrame(
