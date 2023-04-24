@@ -58,8 +58,8 @@ class StagesShape(LoadTestShape):
         {"duration": 100, "users": 10, "spawn_rate": 10},
         {"duration": 800, "users": 100, "spawn_rate": 0.125},
         {"duration": 1800, "users": 100, "spawn_rate": 100},
-        {"duration": 800, "users": 100, "spawn_rate": 0.125},
-        {"duration": 100, "users": 10, "spawn_rate": 10},
+        {"duration": 3500, "users": 100, "spawn_rate": 0.125},
+        {"duration": 3600, "users": 10, "spawn_rate": 10},
     ]
 
     def tick(self):
