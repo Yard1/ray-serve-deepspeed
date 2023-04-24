@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+import shutil
 from functools import wraps
 from pathlib import Path
 from typing import Optional
@@ -36,6 +37,8 @@ def initialize_node(
     # Timeout in 10 minutes
     lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)
     with lock:
+        shutil.rmtree("/home/ray/.cache/torch", ignore_errors=True)
+        os.makedirs("/home/ray/.cache/torch/kernels", exist_ok=True)
         if Path("/nvme/.done").exists():
             print("Skipping node initialization...")
         else:

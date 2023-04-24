@@ -5,10 +5,11 @@ import_path: deepspeed_app:entrypoint
 runtime_env: 
   env_vars:
     APPLICATION_ARGS: |-
-      bucket_uri: "s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/"
-      name: "diegi97/dolly-v2-12b-sharded-bf16"
+      bucket_uri: "s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/"
+      name: "stabilityai/stablelm-tuned-alpha-7b"
       hf_home: "/nvme/cache"
-      batch_size: 20
+      batch_size: 2
+      use_kernel: true
     HF_HOME: "/nvme/cache"
 
 host: 0.0.0.0
@@ -19,7 +20,7 @@ deployments:
 
 - name: DeepspeedApp
   route_prefix: /
-  max_concurrent_queries: 20
+  max_concurrent_queries: 2
   autoscaling_config:
     min_replicas: 2
     initial_replicas: 2

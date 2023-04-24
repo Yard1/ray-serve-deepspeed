@@ -2,12 +2,10 @@
 
 import logging
 import re
-from collections import UserDict
 from typing import List
 
-import torch
 from transformers import PreTrainedTokenizer
-from transformers.utils import ModelOutput
+from ._base import BasePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -50,140 +48,9 @@ def get_special_token_id(tokenizer: PreTrainedTokenizer, key: str) -> int:
     return token_ids[0]
 
 
-class FastPipeline:
+class DollyV2Pipeline(BasePipeline):
     """Essentially a Transformers Pipeline, stripped down to bare essentials +
     InstructPipeline logic."""
-
-    def __init__(self, model, tokenizer, device=None) -> None:
-        self.model = model
-        self.tokenizer = tokenizer
-        self.model.eval()
-
-        if device is not None and not (isinstance(device, int) and device < 0):
-            self.model.to(device)
-
-        if device is None:
-            # `accelerate` device map
-            hf_device_map = getattr(self.model, "hf_device_map", None)
-            if hf_device_map is not None:
-                # Take the first device used by `accelerate`.
-                device = next(iter(hf_device_map.values()))
-            else:
-                device = -1
-
-        if isinstance(device, torch.device):
-            self.device = device
-        elif isinstance(device, str):
-            self.device = torch.device(device)
-        elif device < 0:
-            self.device = torch.device("cpu")
-        else:
-            self.device = torch.device(f"cuda:{device}")
-
-    def _sanitize_parameters(self, return_full_text: bool = None, **generate_kwargs):
-        preprocess_params = {}
-
-        # newer versions of the tokenizer configure the response key as a special token.  newer versions still may
-        # append a newline to yield a single token.  find whatever token is configured for the response key.
-        tokenizer_response_key = next(
-            (
-                token
-                for token in self.tokenizer.additional_special_tokens
-                if token.startswith(RESPONSE_KEY)
-            ),
-            None,
-        )
-
-        response_key_token_id = None
-        end_key_token_id = None
-        if tokenizer_response_key:
-            try:
-                response_key_token_id = get_special_token_id(
-                    self.tokenizer, tokenizer_response_key
-                )
-                end_key_token_id = get_special_token_id(self.tokenizer, END_KEY)
-
-                # Ensure generation stops once it generates "### End"
-                generate_kwargs["eos_token_id"] = end_key_token_id
-            except ValueError:
-                pass
-
-        forward_params = generate_kwargs
-        postprocess_params = {
-            "response_key_token_id": response_key_token_id,
-            "end_key_token_id": end_key_token_id,
-        }
-
-        if return_full_text is not None:
-            postprocess_params["return_full_text"] = return_full_text
-
-        return preprocess_params, forward_params, postprocess_params
-
-    def __call__(self, inputs, **kwargs):
-        (
-            preprocess_params,
-            forward_params,
-            postprocess_params,
-        ) = self._sanitize_parameters(**kwargs)
-        model_inputs = self.preprocess(inputs, **preprocess_params)
-        model_inputs = self._ensure_tensor_on_device(model_inputs, device=self.device)
-        model_outputs = self.forward(model_inputs, **forward_params)
-        model_outputs = self._ensure_tensor_on_device(
-            model_outputs, device=torch.device("cpu")
-        )
-
-        outputs = self.postprocess(model_outputs, **postprocess_params)
-        return outputs
-
-    def ensure_tensor_on_device(self, **inputs):
-        """
-        Ensure PyTorch tensors are on the specified device.
-
-        Args:
-            inputs (keyword arguments that should be `torch.Tensor`, the rest is ignored):
-                The tensors to place on `self.device`.
-            Recursive on lists **only**.
-
-        Return:
-            `Dict[str, torch.Tensor]`: The same as `inputs` but on the proper device.
-        """
-        return self._ensure_tensor_on_device(inputs, self.device)
-
-    def _ensure_tensor_on_device(self, inputs, device):
-        if isinstance(inputs, ModelOutput):
-            return ModelOutput(
-                {
-                    name: self._ensure_tensor_on_device(tensor, device)
-                    for name, tensor in inputs.items()
-                }
-            )
-        elif isinstance(inputs, dict):
-            return {
-                name: self._ensure_tensor_on_device(tensor, device)
-                for name, tensor in inputs.items()
-            }
-        elif isinstance(inputs, UserDict):
-            return UserDict(
-                {
-                    name: self._ensure_tensor_on_device(tensor, device)
-                    for name, tensor in inputs.items()
-                }
-            )
-        elif isinstance(inputs, list):
-            return [self._ensure_tensor_on_device(item, device) for item in inputs]
-        elif isinstance(inputs, tuple):
-            return tuple(
-                [self._ensure_tensor_on_device(item, device) for item in inputs]
-            )
-        elif isinstance(inputs, torch.Tensor):
-            if device == torch.device("cpu") and inputs.dtype in {
-                torch.float16,
-                torch.bfloat16,
-            }:
-                inputs = inputs.float()
-            return inputs.to(device)
-        else:
-            return inputs
 
     def preprocess(self, instruction_text, **generate_kwargs):
         if isinstance(instruction_text, str):
@@ -311,3 +178,43 @@ class FastPipeline:
                 records.append(rec)
 
         return records
+
+    def _sanitize_parameters(self, return_full_text: bool = None, **generate_kwargs):
+        preprocess_params = {}
+
+        # newer versions of the tokenizer configure the response key as a special token.  newer versions still may
+        # append a newline to yield a single token.  find whatever token is configured for the response key.
+        tokenizer_response_key = next(
+            (
+                token
+                for token in self.tokenizer.additional_special_tokens
+                if token.startswith(RESPONSE_KEY)
+            ),
+            None,
+        )
+
+        response_key_token_id = None
+        end_key_token_id = None
+        if tokenizer_response_key:
+            try:
+                response_key_token_id = get_special_token_id(
+                    self.tokenizer, tokenizer_response_key
+                )
+                end_key_token_id = get_special_token_id(self.tokenizer, END_KEY)
+
+                # Ensure generation stops once it generates "### End"
+                generate_kwargs["eos_token_id"] = end_key_token_id
+            except ValueError:
+                pass
+
+        forward_params = generate_kwargs
+        postprocess_params = {
+            "response_key_token_id": response_key_token_id,
+            "end_key_token_id": end_key_token_id,
+        }
+
+        if return_full_text is not None:
+            postprocess_params["return_full_text"] = return_full_text
+
+        return preprocess_params, forward_params, postprocess_params
+

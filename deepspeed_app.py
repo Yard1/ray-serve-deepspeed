@@ -37,7 +37,7 @@ class Args(BaseModel):
     # use_cache: bool = True
 
     max_new_tokens: int = 256
-    max_tokens: int = 1024
+    max_tokens: int = 4096
     dtype: str = "float16"
     save_mp_checkpoint_path: Optional[str] = None
 
@@ -121,6 +121,8 @@ class DeepspeedApp(DeepSpeedPredictor):
             )
         )[0]
         print("Predictions", prediction)
+        if not isinstance(prediction, list):
+            return [prediction]
         return prediction[: len(prompts)]
 
 
