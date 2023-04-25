@@ -1,4 +1,5 @@
 import torch
+
 from ._base import BasePipeline
 
 SYSTEM_PROMPT = """<|SYSTEM|># StableLM Tuned (Alpha version)
@@ -11,13 +12,16 @@ SYSTEM_PROMPT = """<|SYSTEM|># StableLM Tuned (Alpha version)
 
 PROMPT_FOR_GENERATION_FORMAT = SYSTEM_PROMPT + "<|USER|>{instruction}<|ASSISTANT|>"
 
+
 class StableLMPipeline(BasePipeline):
     def __init__(self, model, tokenizer, device=None) -> None:
         super().__init__(model, tokenizer, device)
         from transformers import StoppingCriteria, StoppingCriteriaList
 
         class StopOnTokens(StoppingCriteria):
-            def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+            def __call__(
+                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+            ) -> bool:
                 stop_ids = [50278, 50279, 50277, 1, 0]
                 for stop_id in stop_ids:
                     if input_ids[0][-1] == stop_id:
@@ -47,8 +51,7 @@ class StableLMPipeline(BasePipeline):
 
         generate_kwargs = {**inputs, **generate_kwargs}
         generated_sequence = self.model.generate(
-            **generate_kwargs,
-            stopping_criteria=self.stopping_criteria
+            **generate_kwargs, stopping_criteria=self.stopping_criteria
         )
         return {
             "generated_sequence": generated_sequence,
@@ -60,5 +63,10 @@ class StableLMPipeline(BasePipeline):
         instruction_text = model_outputs["instruction_text"]
         decoded = []
         for token_unwrapped in tokens:
-            decoded.append(self.tokenizer.decode(token_unwrapped, skip_special_tokens=True))
-        return [response[response.find(instruction_text) + len(instruction_text):] for response, instruction_text in zip(decoded, instruction_text)]
+            decoded.append(
+                self.tokenizer.decode(token_unwrapped, skip_special_tokens=True)
+            )
+        return [
+            response[response.find(instruction_text) + len(instruction_text) :]
+            for response, instruction_text in zip(decoded, instruction_text)
+        ]

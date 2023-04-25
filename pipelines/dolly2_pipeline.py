@@ -5,6 +5,7 @@ import re
 from typing import List
 
 from transformers import PreTrainedTokenizer
+
 from ._base import BasePipeline
 
 logger = logging.getLogger(__name__)
@@ -217,4 +218,3 @@ class DollyV2Pipeline(BasePipeline):
             postprocess_params["return_full_text"] = return_full_text
 
         return preprocess_params, forward_params, postprocess_params
-

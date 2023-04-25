@@ -1,9 +1,12 @@
-import torch
-from transformers.utils import ModelOutput
+from abc import ABC, abstractmethod
 from collections import UserDict
 
-class BasePipeline:
+import torch
+
+
+class BasePipeline(ABC):
     """Stripped down version of Transformers pipeline."""
+
     def __init__(self, model, tokenizer, device=None) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -30,18 +33,21 @@ class BasePipeline:
         else:
             self.device = torch.device(f"cuda:{device}")
 
+    @abstractmethod
     def preprocess(self, instruction_text, **generate_kwargs):
         raise NotImplementedError
 
+    @abstractmethod
     def forward(self, model_inputs, **generate_kwargs):
         raise NotImplementedError
 
-    def postprocess(
-        self,
-        model_outputs,
-        **generate_kwargs
-    ):
+    def postprocess(self, model_outputs, **generate_kwargs):
         return model_outputs
+
+    def _set_default_forward_params(self, forward_params):
+        forward_params.setdefault("do_sample", True)
+        forward_params.setdefault("top_p", 0.92)
+        forward_params.setdefault("top_k", 0)
 
     def __call__(self, inputs, **kwargs):
         (
@@ -49,6 +55,7 @@ class BasePipeline:
             forward_params,
             postprocess_params,
         ) = self._sanitize_parameters(**kwargs)
+        self._set_default_forward_params(forward_params)
         model_inputs = self.preprocess(inputs, **preprocess_params)
         model_inputs = self._ensure_tensor_on_device(model_inputs, device=self.device)
         model_outputs = self.forward(model_inputs, **forward_params)
@@ -74,6 +81,8 @@ class BasePipeline:
         return self._ensure_tensor_on_device(inputs, self.device)
 
     def _ensure_tensor_on_device(self, inputs, device):
+        from transformers.utils import ModelOutput
+
         if isinstance(inputs, ModelOutput):
             return ModelOutput(
                 {

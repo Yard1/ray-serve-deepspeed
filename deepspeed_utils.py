@@ -3,6 +3,7 @@
 import argparse
 import gc
 from typing import List
+
 import torch
 
 from pipelines.dolly2_pipeline import DollyV2Pipeline
@@ -87,7 +88,11 @@ def init_model(
 
     # Warmup
     print(generate(["Write a short story."], pipe, max_new_tokens=256))
-    print(generate(["Write a short story.", "Write a short story."], pipe, max_new_tokens=256))
+    print(
+        generate(
+            ["Write a short story.", "Write a short story."], pipe, max_new_tokens=256
+        )
+    )
 
     return pipe
 
@@ -98,9 +103,6 @@ def generate(
     input_sentences: List[str], pipe: DollyV2Pipeline, **generate_kwargs
 ) -> List[str]:
     """Generate predictions using a Pipeline"""
-    generate_kwargs.setdefault("do_sample", True)
-    generate_kwargs.setdefault("top_p", 0.92)
-    generate_kwargs.setdefault("top_k", 0)
     outputs = pipe(
         input_sentences,
         **generate_kwargs,
