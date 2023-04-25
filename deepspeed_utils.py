@@ -3,6 +3,7 @@
 import argparse
 import gc
 from typing import List
+import torch
 
 from pipelines.dolly2_pipeline import DollyV2Pipeline
 from pipelines.stablelm_pipeline import StableLMPipeline
@@ -16,11 +17,8 @@ def init_model(
     """Initialize the deepspeed model"""
     # Lazy import so that the new cache location is used
     import deepspeed
-    import torch
     from deepspeed.runtime.utils import see_memory_usage
     from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-
-    # from deepspeed_pipeline import DSPipeline
 
     data_type = getattr(torch, args.dtype)
 
@@ -32,13 +30,6 @@ def init_model(
     #     torch_dtype=data_type,
     #     trust_remote_code=True,
     #     model_kwargs=dict(low_cpu_mem_usage=True, use_cache=True),
-    # )
-    # pipe = DSPipeline(
-    #     model_name=args.name,
-    #     dtype=data_type,
-    #     is_meta=False,
-    #     device=local_rank,
-    #     #repo_root=args.repo_root,
     # )
 
     if "dolly-v2" in args.name:
@@ -102,14 +93,14 @@ def init_model(
 
 
 @timeit
+@torch.inference_mode()
 def generate(
     input_sentences: List[str], pipe: DollyV2Pipeline, **generate_kwargs
 ) -> List[str]:
     """Generate predictions using a Pipeline"""
     generate_kwargs.setdefault("do_sample", True)
-    generate_kwargs.setdefault("temperature", 0.7)
-    #generate_kwargs.setdefault("top_p", 0.92)
-    #generate_kwargs.setdefault("top_k", 0)
+    generate_kwargs.setdefault("top_p", 0.92)
+    generate_kwargs.setdefault("top_k", 0)
     outputs = pipe(
         input_sentences,
         **generate_kwargs,

@@ -93,6 +93,13 @@ class DeepspeedApp(DeepSpeedPredictor):
         self.scaling_config = scaling_config
         self.init_worker_group(scaling_config)
 
+    def _validate_args(self, args):
+        if args.use_kernel and args.batch_size > args.num_gpus_per_worker_group:
+            raise ValueError(
+                "When use_kernel is True, batch_size must be <= "
+                "num_gpus_per_worker_group."
+            )
+
     @app.post("/")
     async def generate_text(self, prompt: Prompt):
         return await self.generate_text_batch(prompt)
