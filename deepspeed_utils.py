@@ -22,7 +22,7 @@ def init_model(
     # Lazy import so that the new cache location is used
     import deepspeed
     from deepspeed.runtime.utils import see_memory_usage
-    from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     from pipelines.dolly2_pipeline import DollyV2Pipeline
     from pipelines.stablelm_pipeline import StableLMPipeline
@@ -33,13 +33,6 @@ def init_model(
 
     if local_rank == 0:
         see_memory_usage("before init", True)
-
-    # pipe = pipeline(
-    #     model=args.name,
-    #     torch_dtype=data_type,
-    #     trust_remote_code=True,
-    #     model_kwargs=dict(low_cpu_mem_usage=True, use_cache=True),
-    # )
 
     if "dolly-v2" in args.name:
         pass
@@ -58,10 +51,17 @@ def init_model(
         see_memory_usage("after init", True)
 
     if args.ds_inference:
-        from transformers import GPTNeoXForCausalLM, GPTNeoXLayer
+        from transformers import GPTNeoXForCausalLM, LlamaForCausalLM
 
-        if isinstance(model, GPTNeoXForCausalLM) and not args.use_kernel:
-            injection_policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
+        if not args.use_kernel:
+            if isinstance(model, GPTNeoXForCausalLM):
+                from transformers import GPTNeoXLayer
+
+                injection_policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
+            elif isinstance(model, LlamaForCausalLM):
+                from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+
+                injection_policy={LlamaDecoderLayer: ('self_attn.o_proj', 'mlp.down_proj')}
         else:
             injection_policy = None
 
@@ -94,7 +94,7 @@ def init_model(
     batch_size = batch_size or 1
     resp1 = generate([WARMUP_PROMPT] * batch_size, pipe, max_new_tokens=256)
     assert len(resp1) == batch_size
-    print(generate([WARMUP_PROMPT], pipe, max_new_tokens=256))
+    generate([WARMUP_PROMPT], pipe, max_new_tokens=256)
 
     return pipe
 
