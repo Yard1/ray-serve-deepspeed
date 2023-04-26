@@ -33,13 +33,13 @@ class Args(BaseModel):
     # use_meta_tensor: bool = False
     num_worker_groups: int = 2
     num_gpus_per_worker_group: int = 2
+    num_cpus_per_worker: int = 4
     reshard_checkpoint_path: Optional[str] = None
     # use_cache: bool = True
 
     max_new_tokens: int = 256
     max_tokens: int = 4096
     dtype: str = "float16"
-    save_mp_checkpoint_path: Optional[str] = None
 
 
 raw_args = os.getenv("APPLICATION_ARGS")
@@ -86,7 +86,7 @@ class DeepspeedApp(DeepSpeedPredictor):
             use_gpu=True,
             num_workers=args.num_gpus_per_worker_group,
             trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": 4, "GPU": 1},
+            resources_per_worker={"CPU": args.num_cpus_per_worker, "GPU": 1},
         )
 
         self.checkpoint = Checkpoint.from_dict({"config": self.args})
@@ -94,11 +94,7 @@ class DeepspeedApp(DeepSpeedPredictor):
         self.init_worker_group(scaling_config)
 
     def _validate_args(self, args):
-        if args.use_kernel and args.batch_size > args.num_gpus_per_worker_group:
-            raise ValueError(
-                "When use_kernel is True, batch_size must be <= "
-                "num_gpus_per_worker_group."
-            )
+        pass
 
     @app.post("/")
     async def generate_text(self, prompt: Prompt):

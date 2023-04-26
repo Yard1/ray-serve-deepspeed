@@ -1,4 +1,5 @@
 import argparse
+import os
 from typing import List
 
 import pandas as pd
@@ -30,18 +31,18 @@ class PredictionWorker(TorchDistributedWorker):
 
     def init_model(self, local_rank: int):
         """Initialize model for inference"""
+        os.environ["OMP_NUM_THREADS"] = str(self.config.num_cpus_per_worker)
+
         initialize_node(
             model_name=self.config.name,
             bucket_uri=self.config.bucket_uri,
             hf_home=self.config.hf_home,
         )
-        # Note: we have to provide the local_rank that was used to initiate
-        # the DDP process group here. E.g., a PredictionWorker may be the
-        # rank 0 worker of a group, but occupying gpu 7.
-        self.generator = init_model(self.config, self.world_size, local_rank)
+        self.generator = init_model(
+            self.config, self.world_size, local_rank, batch_size=self.config.batch_size
+        )
 
     def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
-        print(f"Processing batch {data}")
         return generate(list(data[column]), self.generator, **kwargs)
 
 
