@@ -10,6 +10,7 @@ model_config:
     top_p: 0.92
   mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
   mode:
+    type: DeviceMap
     device_map: auto
   name: stabilityai/stablelm-tuned-alpha-7b
   pipeline_cls: stablelm

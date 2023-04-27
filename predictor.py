@@ -1,9 +1,11 @@
 import os
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 import ray
 import ray.util
+import torch
+import torch.backends.cuda
 from ray.air import Checkpoint, ScalingConfig
 from ray.air.util.torch_dist import (
     TorchDistributedWorker,
@@ -12,8 +14,70 @@ from ray.air.util.torch_dist import (
 from ray.train.predictor import Predictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+from initializers import get_initializer_cls_by_name
 from models import LLM
-from utils import generate, init_model, initialize_node
+from pipelines import get_pipeline_cls_by_name
+from utils import initialize_node, timeit
+
+WARMUP_PROMPT = "Write a short story."
+
+
+@timeit
+def init_model(
+    llm_config: LLM,
+    world_size: int,
+    local_rank: int,
+    batch_size: Optional[int] = None,
+):
+    """Initialize the model"""
+    # Lazy import so that the new cache location is used
+    torch.backends.cuda.matmul.allow_tf32 = True
+    dtype = getattr(torch, llm_config.dtype)
+    device = torch.device(f"cuda:{local_rank}")
+
+    initializer_name = llm_config.mode
+    if not isinstance(initializer_name, str):
+        initializer_name = initializer_name.type
+    initializer = get_initializer_cls_by_name(initializer_name)(
+        device=device,
+        world_size=world_size,
+        dtype=dtype,
+        **llm_config.mode.dict(exclude={"type"}),
+    )
+    print(initializer)
+
+    model, tokenizer = initializer.load(llm_config.name)
+
+    print(model)
+
+    pipeline_name = llm_config.pipeline_cls
+    pipeline = get_pipeline_cls_by_name(pipeline_name)(model=model, tokenizer=tokenizer)
+
+    # Warmup
+    # For DS w/ kernel inject, first batch the model gets MUST be of maximum batch size,
+    # otherwise subsequent batches with more entries than the first batch
+    # will raise CUDA errors if use_kernel=True.
+    batch_size = batch_size or 1
+    max_new_tokens = llm_config.generation_kwargs.get("max_new_tokens", 256)
+    resp1 = generate(
+        [WARMUP_PROMPT] * batch_size, pipeline, max_new_tokens=max_new_tokens
+    )
+    assert len(resp1) == batch_size
+    generate([WARMUP_PROMPT], pipeline, max_new_tokens=max_new_tokens)
+
+    print("Model succesfully initialized!")
+
+    return pipeline
+
+
+@timeit
+def generate(input_sentences: List[str], pipeline, **generate_kwargs) -> List[str]:
+    """Generate predictions using a Pipeline"""
+    outputs = pipeline(
+        input_sentences,
+        **generate_kwargs,
+    )
+    return outputs
 
 
 @ray.remote
@@ -28,9 +92,14 @@ class PredictionWorker(TorchDistributedWorker):
         self.llm_config = llm_config
         self.world_size = world_size
 
-    def init_model(self, local_rank: int, hf_home=None):
+    def init_model(
+        self,
+        local_rank: int,
+        hf_home: Optional[str] = None,
+        num_cpus_per_worker: int = 1,
+    ):
         """Initialize model for inference"""
-        os.environ["OMP_NUM_THREADS"] = str(self.llm_config.num_cpus_per_worker)
+        os.environ["OMP_NUM_THREADS"] = str(num_cpus_per_worker)
 
         initialize_node(
             model_name=self.llm_config.name,
@@ -62,7 +131,8 @@ class LLMPredictor(Predictor):
         one worker will destroy the entire group). Each worker in the group
         recieves the same input data and outputs the same generated text.
         """
-        config = self.checkpoint.to_dict()["config"].model_config
+        config = self.checkpoint.to_dict()["config"]
+        llm_config = config.model_config
 
         # Start a placement group for the workers.
         self.pg = scaling_config.as_placement_group_factory().to_placement_group()
@@ -76,7 +146,7 @@ class LLMPredictor(Predictor):
         )
         # Create the prediction workers.
         self.prediction_workers = [
-            prediction_worker_cls.remote(config, scaling_config.num_workers)
+            prediction_worker_cls.remote(llm_config, scaling_config.num_workers)
             for i in range(scaling_config.num_workers)
         ]
 
@@ -90,7 +160,11 @@ class LLMPredictor(Predictor):
         # Initialize model on each worker.
         ray.get(
             [
-                worker.init_model.remote(local_rank, hf_home=config.hf_home)
+                worker.init_model.remote(
+                    local_rank,
+                    hf_home=config.hf_home,
+                    num_cpus_per_worker=scaling_config.num_cpus_per_worker,
+                )
                 for worker, local_rank in zip(self.prediction_workers, local_ranks)
             ]
         )

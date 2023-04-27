@@ -2,9 +2,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Tuple
 
 import torch
-
-if TYPE_CHECKING:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class LLMInitializer(ABC):
@@ -29,7 +27,7 @@ class LLMInitializer(ABC):
     def _load_model(self, model_name: str) -> "AutoModelForCausalLM":
         pass
 
-    def _load_tokenizer(self, tokenizer_name: str) -> AutoTokenizer:
+    def _load_tokenizer(self, tokenizer_name: str) -> "AutoTokenizer":
         return AutoTokenizer.from_pretrained(tokenizer_name, padding_side="left")
 
     def _postprocess_model(

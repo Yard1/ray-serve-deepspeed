@@ -3,15 +3,19 @@ from collections import UserDict
 
 import torch
 
+from .utils import get_special_token_id
+
 
 class BasePipeline(ABC):
     """Stripped down version of Transformers pipeline."""
 
-    def __init__(self, model, tokenizer, prompt=None, device=None, stopping_tokens=None) -> None:
+    def __init__(
+        self, model, tokenizer, prompt_format=None, device=None, stopping_tokens=None
+    ) -> None:
         self.model = model
         self.tokenizer = tokenizer
-        self.prompt = prompt or ""
-        self.stopping_tokens = stopping_tokens
+        self.prompt_format: str = prompt_format or ""
+        self.stopping_tokens = self._get_stopping_tokens(tokenizer, stopping_tokens)
         self.model.eval()
 
         if device is not None and not (isinstance(device, int) and device < 0):
@@ -50,6 +54,14 @@ class BasePipeline(ABC):
         forward_params.setdefault("do_sample", True)
         forward_params.setdefault("top_p", 0.92)
         forward_params.setdefault("top_k", 0)
+
+    def _get_stopping_tokens(self, tokenizer, stopping_tokens):
+        if not stopping_tokens:
+            return None
+        return {
+            get_special_token_id(tokenizer, key) if isinstance(key, str) else key
+            for key in stopping_tokens
+        }
 
     @torch.inference_mode()
     def __call__(self, inputs, **kwargs):

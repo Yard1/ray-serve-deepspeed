@@ -17,13 +17,15 @@ runtime_env:
           top_p: 0.92
         mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
         mode:
-          device_map: auto
+          type: DeepSpeed
+          use_kernel: true
         name: stabilityai/stablelm-tuned-alpha-7b
         pipeline_cls: stablelm
-        prompt: null
+        prompt_format: null
         stopping_tokens: null
       scaling_config:
         num_workers: 2
+        num_gpus_per_worker: 1
         num_cpus_per_worker: 4
     HF_HOME: "/nvme/cache"
 

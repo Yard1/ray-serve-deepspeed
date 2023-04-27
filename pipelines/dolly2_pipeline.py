@@ -32,17 +32,25 @@ class DollyV2Pipeline(BasePipeline):
     """Essentially a Transformers Pipeline, stripped down to bare essentials +
     InstructPipeline logic."""
 
-    def __init__(self, model, tokenizer, prompt=None, device=None, stopping_tokens=None) -> None:
+    def __init__(
+        self, model, tokenizer, prompt_format=None, device=None, stopping_tokens=None
+    ) -> None:
         super().__init__(
-            model, tokenizer, prompt or PROMPT_FOR_GENERATION_FORMAT, device, stopping_tokens
+            model,
+            tokenizer,
+            prompt_format
+            if prompt_format is not None
+            else PROMPT_FOR_GENERATION_FORMAT,
+            device,
+            stopping_tokens,
         )
 
     def preprocess(self, instruction_text, **generate_kwargs):
         if isinstance(instruction_text, str):
-            prompt_text = self.prompt.format(instruction=instruction_text)
+            prompt_text = self.prompt_format.format(instruction=instruction_text)
         else:
             prompt_text = [
-                self.prompt.format(instruction=text) for text in instruction_text
+                self.prompt_format.format(instruction=text) for text in instruction_text
             ]
         inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True)
         inputs["prompt_text"] = prompt_text

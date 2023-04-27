@@ -7,9 +7,11 @@ from .device_map import DeviceMapInitializer
 
 def get_initializer_cls_by_name(name: str) -> Type[LLMInitializer]:
     lowercase_globals = {k.lower(): v for k, v in globals().items()}
-    return lowercase_globals.get(
-        f"{name.lower()}initializer", lowercase_globals[name.lower()]
+    ret = lowercase_globals.get(
+        f"{name.lower()}initializer", lowercase_globals.get(name.lower(), None)
     )
+    assert ret
+    return ret
 
 
 __all__ = [
