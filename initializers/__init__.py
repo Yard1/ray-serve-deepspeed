@@ -1,0 +1,19 @@
+from typing import Type
+
+from ._base import LLMInitializer
+from .deepspeed import DeepSpeedInitializer
+from .device_map import DeviceMapInitializer
+
+
+def get_initializer_cls_by_name(name: str) -> Type[LLMInitializer]:
+    lowercase_globals = {k.lower(): v for k, v in globals().items()}
+    return lowercase_globals.get(
+        f"{name.lower()}initializer", lowercase_globals[name.lower()]
+    )
+
+
+__all__ = [
+    "get_initializer_cls_by_name",
+    "DeepSpeedInitializer",
+    "DeviceMapInitializer",
+]

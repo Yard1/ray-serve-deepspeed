@@ -14,15 +14,17 @@ PROMPT_FOR_GENERATION_FORMAT = SYSTEM_PROMPT + "<|USER|>{instruction}<|ASSISTANT
 
 
 class StableLMPipeline(BasePipeline):
-    def __init__(self, model, tokenizer, device=None) -> None:
-        super().__init__(model, tokenizer, device)
+    def __init__(self, model, tokenizer, prompt=None, device=None, stopping_tokens=None) -> None:
+        super().__init__(
+            model, tokenizer, prompt or PROMPT_FOR_GENERATION_FORMAT, device, stopping_tokens
+        )
         from transformers import StoppingCriteria, StoppingCriteriaList
 
         class StopOnTokens(StoppingCriteria):
             def __call__(
                 self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
             ) -> bool:
-                stop_ids = [50278, 50279, 50277, 1, 0]
+                stop_ids = stopping_tokens or [50278, 50279, 50277, 1, 0]
                 for stop_id in stop_ids:
                     if input_ids[0][-1] == stop_id:
                         return True
@@ -34,8 +36,7 @@ class StableLMPipeline(BasePipeline):
         if isinstance(instruction_text, str):
             instruction_text = [instruction_text]
         prompt_text = [
-            PROMPT_FOR_GENERATION_FORMAT.format(instruction=text)
-            for text in instruction_text
+            self.prompt.format(instruction=text) for text in instruction_text
         ]
         if not self.tokenizer.pad_token or self.tokenizer.pad_token_id < 0:
             self.tokenizer.pad_token = self.tokenizer.eos_token

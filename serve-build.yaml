@@ -5,11 +5,26 @@ import_path: deepspeed_app:entrypoint
 runtime_env: 
   env_vars:
     APPLICATION_ARGS: |-
-      bucket_uri: "s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/"
-      name: "stabilityai/stablelm-tuned-alpha-7b"
-      hf_home: "/nvme/cache"
-      batch_size: 2
-      use_kernel: true
+      hf_home: /nvme/cache
+      model_config:
+        batch_size: 20
+        dtype: float16
+        from_pretrained_kwargs: {}
+        generation_kwargs:
+          do_sample: true
+          max_new_tokens: 512
+          top_k: 0
+          top_p: 0.92
+        mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
+        mode:
+          device_map: auto
+        name: stabilityai/stablelm-tuned-alpha-7b
+        pipeline_cls: stablelm
+        prompt: null
+        stopping_tokens: null
+      scaling_config:
+        num_workers: 2
+        num_cpus_per_worker: 4
     HF_HOME: "/nvme/cache"
 
 host: 0.0.0.0

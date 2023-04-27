@@ -1,4 +1,3 @@
-import argparse
 import os
 from typing import List
 
@@ -13,8 +12,8 @@ from ray.air.util.torch_dist import (
 from ray.train.predictor import Predictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from deepspeed_utils import generate, init_model
-from utils import initialize_node
+from models import LLM
+from utils import generate, init_model, initialize_node
 
 
 @ray.remote
@@ -25,28 +24,31 @@ class PredictionWorker(TorchDistributedWorker):
     group and work together under the orchestration of DeepSpeed.
     """
 
-    def __init__(self, config: argparse.Namespace, world_size: int):
-        self.config = config
+    def __init__(self, llm_config: LLM, world_size: int):
+        self.llm_config = llm_config
         self.world_size = world_size
 
-    def init_model(self, local_rank: int):
+    def init_model(self, local_rank: int, hf_home=None):
         """Initialize model for inference"""
-        os.environ["OMP_NUM_THREADS"] = str(self.config.num_cpus_per_worker)
+        os.environ["OMP_NUM_THREADS"] = str(self.llm_config.num_cpus_per_worker)
 
         initialize_node(
-            model_name=self.config.name,
-            bucket_uri=self.config.bucket_uri,
-            hf_home=self.config.hf_home,
+            model_name=self.llm_config.name,
+            bucket_uri=self.llm_config.mirror_bucket_uri,
+            hf_home=hf_home,
         )
         self.generator = init_model(
-            self.config, self.world_size, local_rank, batch_size=self.config.batch_size
+            self.llm_config,
+            self.world_size,
+            local_rank,
+            batch_size=self.llm_config.batch_size,
         )
 
     def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
         return generate(list(data[column]), self.generator, **kwargs)
 
 
-class DeepSpeedPredictor(Predictor):
+class LLMPredictor(Predictor):
     def __init__(self, checkpoint: Checkpoint, scaling_config: ScalingConfig) -> None:
         self.checkpoint = checkpoint
         self.scaling_config = scaling_config
@@ -60,7 +62,7 @@ class DeepSpeedPredictor(Predictor):
         one worker will destroy the entire group). Each worker in the group
         recieves the same input data and outputs the same generated text.
         """
-        config = self.checkpoint.to_dict()["config"]
+        config = self.checkpoint.to_dict()["config"].model_config
 
         # Start a placement group for the workers.
         self.pg = scaling_config.as_placement_group_factory().to_placement_group()
@@ -88,7 +90,7 @@ class DeepSpeedPredictor(Predictor):
         # Initialize model on each worker.
         ray.get(
             [
-                worker.init_model.remote(local_rank)
+                worker.init_model.remote(local_rank, hf_home=config.hf_home)
                 for worker, local_rank in zip(self.prediction_workers, local_ranks)
             ]
         )

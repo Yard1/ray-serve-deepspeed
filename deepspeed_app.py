@@ -1,54 +1,24 @@
 import asyncio
 import os
-from typing import List, Optional
+from typing import List
 
 import pandas as pd
 import ray
 import ray.util
-import yaml
 from fastapi import FastAPI
-from pydantic import BaseModel
 from ray import serve
 from ray.air import Checkpoint, ScalingConfig
 
-from deepspeed_predictor import DeepSpeedPredictor
+from models import Args, Prompt
+from predictor import LLMPredictor
 
 app = FastAPI()
 
 
-class Prompt(BaseModel):
-    prompt: str
-
-
-class Args(BaseModel):
-    # bucket_uri: str = "s3://large-dl-models-mirror/models--anyscale--opt-66b-resharded/main/"
-    # name: str = "facebook/opt-66b"
-    # hf_home: str = "/nvme/cache"
-    bucket_uri: str
-    name: str
-    hf_home: str
-    batch_size: int = 1
-    ds_inference: bool = True
-    use_kernel: bool = False
-    # use_meta_tensor: bool = False
-    num_worker_groups: int = 2
-    num_gpus_per_worker_group: int = 2
-    num_cpus_per_worker: int = 4
-    reshard_checkpoint_path: Optional[str] = None
-    # use_cache: bool = True
-
-    max_new_tokens: int = 256
-    max_tokens: int = 4096
-    dtype: str = "float16"
-
-
 raw_args = os.getenv("APPLICATION_ARGS")
-if raw_args:
-    assert raw_args is not None, "APPLICATION_ARGS env var must be set"
-    print("Received args", raw_args)
-    dict_args = yaml.load(raw_args, Loader=yaml.SafeLoader)
-    print("Received args dict", dict_args)
-args = Args.parse_obj(dict_args)
+assert raw_args is not None, "APPLICATION_ARGS env var must be set"
+print("Received args", raw_args)
+args = Args.parse_yaml(raw_args)
 
 
 ray.init(
@@ -78,15 +48,18 @@ ray.init(
     max_concurrent_queries=2,  # Maximum backlog for a single replica
 )
 @serve.ingress(app)
-class DeepspeedApp(DeepSpeedPredictor):
+class DeepspeedApp(LLMPredictor):
     def __init__(self) -> None:
         self.args = args
 
         scaling_config = ScalingConfig(
             use_gpu=True,
-            num_workers=args.num_gpus_per_worker_group,
+            num_workers=args.scaling_config.num_workers,
             trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": args.num_cpus_per_worker, "GPU": 1},
+            resources_per_worker={
+                "CPU": args.scaling_config.num_cpus_per_worker,
+                "GPU": args.scaling_config.num_gpus_per_worker,
+            },
         )
 
         self.checkpoint = Checkpoint.from_dict({"config": self.args})
@@ -100,7 +73,7 @@ class DeepspeedApp(DeepSpeedPredictor):
     async def generate_text(self, prompt: Prompt):
         return await self.generate_text_batch(prompt)
 
-    @serve.batch(max_batch_size=args.batch_size, batch_wait_timeout_s=1)
+    @serve.batch(max_batch_size=args.model_config.batch_size, batch_wait_timeout_s=1)
     async def generate_text_batch(self, prompts: List[Prompt]):
         """Generate text from the given prompts in batch"""
 
@@ -117,7 +90,7 @@ class DeepspeedApp(DeepSpeedPredictor):
                     worker.generate.remote(
                         data_ref,
                         column=input_column,
-                        max_new_tokens=args.max_new_tokens,
+                        **args.model_config.generation_kwargs,
                     )
                     for worker in self.prediction_workers
                 ]

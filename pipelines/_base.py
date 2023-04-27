@@ -7,9 +7,11 @@ import torch
 class BasePipeline(ABC):
     """Stripped down version of Transformers pipeline."""
 
-    def __init__(self, model, tokenizer, device=None) -> None:
+    def __init__(self, model, tokenizer, prompt=None, device=None, stopping_tokens=None) -> None:
         self.model = model
         self.tokenizer = tokenizer
+        self.prompt = prompt or ""
+        self.stopping_tokens = stopping_tokens
         self.model.eval()
 
         if device is not None and not (isinstance(device, int) and device < 0):
@@ -49,6 +51,7 @@ class BasePipeline(ABC):
         forward_params.setdefault("top_p", 0.92)
         forward_params.setdefault("top_k", 0)
 
+    @torch.inference_mode()
     def __call__(self, inputs, **kwargs):
         (
             preprocess_params,
