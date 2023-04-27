@@ -43,7 +43,7 @@ def init_model(
 
     tokenizer = AutoTokenizer.from_pretrained(args.name, padding_side="left")
     model = AutoModelForCausalLM.from_pretrained(
-        args.name, low_cpu_mem_usage=True, torch_dtype=data_type, use_cache=True
+        args.name, low_cpu_mem_usage=True, torch_dtype=data_type, use_cache=True, device_map = None if args.ds_inference else "auto"
     )
     model.eval()
 
@@ -74,13 +74,15 @@ def init_model(
             max_tokens=args.max_tokens,
         )
 
+        device = torch.device(f"cuda:{local_rank}")
+        # Add this attribute for compatibility with the pipeline
+        model.device = device
+        model = model.to(device)
+    else:
+        device = None
+
     if local_rank == 0:
         see_memory_usage("after init_inference", True)
-
-    device = torch.device(f"cuda:{local_rank}")
-    # Add this attribute for compatibility with the pipeline
-    model.device = device
-    model = model.to(device)
 
     if "dolly-v2" in args.name:
         pipe = DollyV2Pipeline(model=model, tokenizer=tokenizer, device=device)
