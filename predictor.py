@@ -113,7 +113,7 @@ class PredictionWorker(TorchDistributedWorker):
             batch_size=self.llm_config.batch_size,
         )
 
-    def generate(self, data: List[Prompt], column: str, **kwargs) -> List[str]:
+    def generate(self, data: List[Prompt], **kwargs) -> List[str]:
         return generate(data, self.generator, **kwargs)
 
 

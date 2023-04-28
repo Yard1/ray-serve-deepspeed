@@ -12,7 +12,7 @@ runtime_env:
         from_pretrained_kwargs: {}
         generation_kwargs:
           do_sample: true
-          max_new_tokens: 512
+          max_new_tokens: 256
           top_k: 0
           top_p: 0.92
         mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/

@@ -26,4 +26,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    send_query(args.prompt, args.host)
+    print(send_query(args.prompt, args.host))
