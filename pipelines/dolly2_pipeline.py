@@ -45,13 +45,9 @@ class DollyV2Pipeline(BasePipeline):
             stopping_tokens,
         )
 
-    def preprocess(self, instruction_text, **generate_kwargs):
-        if isinstance(instruction_text, str):
-            prompt_text = self.prompt_format.format(instruction=instruction_text)
-        else:
-            prompt_text = [
-                self.prompt_format.format(instruction=text) for text in instruction_text
-            ]
+    def preprocess(self, prompts, **generate_kwargs):
+        prompt_text = self._construct_prompts(prompts)
+        instruction_text = self._construct_prompts(prompts, prompt_format="")
         inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True)
         inputs["prompt_text"] = prompt_text
         inputs["instruction_text"] = instruction_text

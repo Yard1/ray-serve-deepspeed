@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from collections import UserDict
+from typing import List, Optional, Union
 
 import torch
+
+from models import Prompt
 
 from .utils import get_special_token_id
 
@@ -39,8 +42,33 @@ class BasePipeline(ABC):
         else:
             self.device = torch.device(f"cuda:{device}")
 
+    def _construct_prompt(self, prompt: Union[str, Prompt], prompt_format: str) -> str:
+        if isinstance(prompt, Prompt):
+            if prompt.use_prompt_format and prompt_format:
+                return prompt_format.format(instruction=prompt.prompt)
+            else:
+                return prompt.prompt
+        return prompt_format.format(instruction=prompt) if prompt_format else prompt
+
+    def _construct_prompts(
+        self,
+        prompts: Union[str, Prompt, List[str], List[Prompt]],
+        prompt_format: Optional[str] = None,
+    ) -> List[str]:
+        if not isinstance(prompts, list):
+            prompts = [prompts]
+        return [
+            self._construct_prompt(
+                prompt,
+                prompt_format=prompt_format
+                if prompt_format is not None
+                else self.prompt_format,
+            )
+            for prompt in prompts
+        ]
+
     @abstractmethod
-    def preprocess(self, instruction_text, **generate_kwargs):
+    def preprocess(self, prompts, **generate_kwargs):
         raise NotImplementedError
 
     @abstractmethod

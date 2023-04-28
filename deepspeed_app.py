@@ -78,18 +78,12 @@ class DeepspeedApp(LLMPredictor):
         """Generate text from the given prompts in batch"""
 
         print(f"Received {len(prompts)} prompts", prompts)
-        input_column = "predict"
-        #  Wrap in pandas
-        data = pd.DataFrame(
-            [prompt.prompt for prompt in prompts], columns=[input_column]
-        )
-        data_ref = ray.put(data)
+        data_ref = ray.put(prompts)
         prediction = (
             await asyncio.gather(
                 *[
                     worker.generate.remote(
                         data_ref,
-                        column=input_column,
                         **args.model_config.generation_kwargs,
                     )
                     for worker in self.prediction_workers

@@ -41,6 +41,10 @@ class BaseModelExtended(BaseModel):
 
 class Prompt(BaseModelExtended):
     prompt: str
+    use_prompt_format: bool = True
+
+    def __str__(self) -> str:
+        return self.prompt
 
 
 class Framework(BaseModelExtended, extra=Extra.forbid):

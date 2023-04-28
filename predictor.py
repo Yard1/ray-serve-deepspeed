@@ -15,7 +15,7 @@ from ray.train.predictor import Predictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from initializers import get_initializer_cls_by_name
-from models import LLM
+from models import LLM, Prompt
 from pipelines import get_pipeline_cls_by_name
 from utils import initialize_node, timeit
 
@@ -71,10 +71,10 @@ def init_model(
 
 
 @timeit
-def generate(input_sentences: List[str], pipeline, **generate_kwargs) -> List[str]:
+def generate(prompts: List[Prompt], pipeline, **generate_kwargs) -> List[str]:
     """Generate predictions using a Pipeline"""
     outputs = pipeline(
-        input_sentences,
+        prompts,
         **generate_kwargs,
     )
     return outputs
@@ -113,8 +113,8 @@ class PredictionWorker(TorchDistributedWorker):
             batch_size=self.llm_config.batch_size,
         )
 
-    def generate(self, data: pd.DataFrame, column: str, **kwargs) -> List[str]:
-        return generate(list(data[column]), self.generator, **kwargs)
+    def generate(self, data: List[Prompt], column: str, **kwargs) -> List[str]:
+        return generate(data, self.generator, **kwargs)
 
 
 class LLMPredictor(Predictor):

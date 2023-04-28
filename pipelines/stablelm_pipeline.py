@@ -44,12 +44,11 @@ class StableLMPipeline(BasePipeline):
 
         self.stopping_criteria = StoppingCriteriaList([StopOnTokens()])
 
-    def preprocess(self, instruction_text, **generate_kwargs):
-        if isinstance(instruction_text, str):
-            instruction_text = [instruction_text]
-        prompt_text = [
-            self.prompt_format.format(instruction=text) for text in instruction_text
-        ]
+    def preprocess(self, prompts, **generate_kwargs):
+        prompt_text = self._construct_prompts(
+            prompts,
+        )
+        instruction_text = self._construct_prompts(prompts, prompt_format="")
         if not self.tokenizer.pad_token or self.tokenizer.pad_token_id < 0:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True)
