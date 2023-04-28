@@ -15,7 +15,13 @@ PROMPT_FOR_GENERATION_FORMAT = SYSTEM_PROMPT + "<|USER|>{instruction}<|ASSISTANT
 
 class StableLMPipeline(BasePipeline):
     def __init__(
-        self, model, tokenizer, prompt_format=None, device=None, stopping_tokens=None
+        self,
+        model,
+        tokenizer,
+        prompt_format=None,
+        device=None,
+        stopping_tokens=None,
+        **kwargs
     ) -> None:
         super().__init__(
             model,
@@ -26,23 +32,6 @@ class StableLMPipeline(BasePipeline):
             device,
             stopping_tokens,
         )
-        from transformers import StoppingCriteria, StoppingCriteriaList
-
-        class StopOnTokens(StoppingCriteria):
-            def __call__(
-                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-            ) -> bool:
-                stop_ids = (
-                    stopping_tokens
-                    if stopping_tokens is not None
-                    else [50278, 50279, 50277, 1, 0]
-                )
-                for stop_id in stop_ids:
-                    if input_ids[0][-1] == stop_id:
-                        return True
-                return False
-
-        self.stopping_criteria = StoppingCriteriaList([StopOnTokens()])
 
     def preprocess(self, prompts, **generate_kwargs):
         prompt_text = self._construct_prompts(

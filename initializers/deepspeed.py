@@ -23,14 +23,10 @@ class DeepSpeedInitializer(LLMInitializer):
         self.use_kernel = use_kernel
         self.injection_policy = injection_policy
 
-    def _load_model(self, model_name: str) -> AutoModelForCausalLM:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name, low_cpu_mem_usage=True, torch_dtype=self.dtype, **self.kwargs
-        )
-        model.eval()
-        return model
+    def get_model_from_pretrained_kwargs(self):
+        return dict(low_cpu_mem_usage=True, torch_dtype=self.dtype, **self.kwargs)
 
-    def _postprocess_model(
+    def postprocess_model(
         self, model: "AutoModelForCausalLM"
     ) -> "AutoModelForCausalLM":
         from transformers import GPTNeoXForCausalLM, LlamaForCausalLM

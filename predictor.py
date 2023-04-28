@@ -44,14 +44,11 @@ def init_model(
         dtype=dtype,
         **llm_config.mode.dict(exclude={"type"}),
     )
-    print(initializer)
-
-    model, tokenizer = initializer.load(llm_config.name)
-
-    print(model)
 
     pipeline_name = llm_config.pipeline_cls
-    pipeline = get_pipeline_cls_by_name(pipeline_name)(model=model, tokenizer=tokenizer)
+    pipeline = get_pipeline_cls_by_name(pipeline_name).from_initializer(
+        initializer, llm_config.name
+    )
 
     # Warmup
     # For DS w/ kernel inject, first batch the model gets MUST be of maximum batch size,

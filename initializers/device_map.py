@@ -18,13 +18,5 @@ class DeviceMapInitializer(LLMInitializer):
         )
         self.device_map = device_map
 
-    def _load_model(self, model_name: str) -> AutoModelForCausalLM:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            low_cpu_mem_usage=True,
-            torch_dtype=self.dtype,
-            device_map=self.device_map,
-            **self.kwargs
-        )
-        model.eval()
-        return model
+    def get_model_from_pretrained_kwargs(self):
+        return dict(torch_dtype=self.dtype, device_map=self.device_map, **self.kwargs)

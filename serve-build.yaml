@@ -7,7 +7,7 @@ runtime_env:
     APPLICATION_ARGS: |-
       hf_home: /nvme/cache
       model_config:
-        batch_size: 20
+        batch_size: 1
         dtype: float16
         from_pretrained_kwargs: {}
         generation_kwargs:
@@ -18,7 +18,6 @@ runtime_env:
         mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
         mode:
           type: DeepSpeed
-          use_kernel: true
         name: stabilityai/stablelm-tuned-alpha-7b
         pipeline_cls: stablelm
         prompt_format: null

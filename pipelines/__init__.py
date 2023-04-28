@@ -1,6 +1,7 @@
 from typing import Type
 
 from ._base import BasePipeline
+from .default_transformers_pipeline import DefaultTransformersPipeline
 from .dolly2_pipeline import DollyV2Pipeline
 from .stablelm_pipeline import StableLMPipeline
 
@@ -14,4 +15,9 @@ def get_pipeline_cls_by_name(name: str) -> Type[BasePipeline]:
     return ret
 
 
-__all__ = ["get_pipeline_cls_by_name", "DollyV2Pipeline", "StableLMPipeline"]
+__all__ = [
+    "get_pipeline_cls_by_name",
+    "DollyV2Pipeline",
+    "StableLMPipeline",
+    "DefaultTransformersPipeline",
+]

@@ -13,16 +13,19 @@ class BasePipeline(ABC):
     """Stripped down version of Transformers pipeline."""
 
     def __init__(
-        self, model, tokenizer, prompt_format=None, device=None, stopping_tokens=None
+        self,
+        model,
+        tokenizer,
+        prompt_format=None,
+        device=None,
+        stopping_tokens=None,
+        **kwargs,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.prompt_format: str = prompt_format or ""
         self.stopping_tokens = self._get_stopping_tokens(tokenizer, stopping_tokens)
-        self.model.eval()
-
-        if device is not None and not (isinstance(device, int) and device < 0):
-            self.model.to(device)
+        self.kwargs = kwargs
 
         if device is None:
             # `accelerate` device map
@@ -31,7 +34,7 @@ class BasePipeline(ABC):
                 # Take the first device used by `accelerate`.
                 device = next(iter(hf_device_map.values()))
             else:
-                device = -1
+                device = model.device
 
         if isinstance(device, torch.device):
             self.device = device
@@ -41,6 +44,47 @@ class BasePipeline(ABC):
             self.device = torch.device("cpu")
         else:
             self.device = torch.device(f"cuda:{device}")
+
+        self.stopping_criteria = self._get_stopping_criteria(self.stopping_tokens)
+
+    @classmethod
+    def from_initializer(
+        cls,
+        initializer,
+        model_name,
+        prompt_format=None,
+        device=None,
+        stopping_tokens=None,
+        **kwargs,
+    ):
+        model, tokenizer = initializer.load(model_name)
+        return cls(
+            model,
+            tokenizer,
+            prompt_format=prompt_format,
+            device=device,
+            stopping_tokens=stopping_tokens,
+            **kwargs,
+        )
+
+    def _get_stopping_criteria(self, stopping_tokens):
+        from transformers import StoppingCriteria, StoppingCriteriaList
+
+        class StopOnTokens(StoppingCriteria):
+            def __call__(
+                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+            ) -> bool:
+                stop_ids = (
+                    stopping_tokens
+                    if stopping_tokens is not None
+                    else [50278, 50279, 50277, 1, 0]
+                )
+                for stop_id in stop_ids:
+                    if input_ids[0][-1] == stop_id:
+                        return True
+                return False
+
+        self.stopping_criteria = StoppingCriteriaList([StopOnTokens()])
 
     def _construct_prompt(self, prompt: Union[str, Prompt], prompt_format: str) -> str:
         if isinstance(prompt, Prompt):

@@ -33,7 +33,13 @@ class DollyV2Pipeline(BasePipeline):
     InstructPipeline logic."""
 
     def __init__(
-        self, model, tokenizer, prompt_format=None, device=None, stopping_tokens=None
+        self,
+        model,
+        tokenizer,
+        prompt_format=None,
+        device=None,
+        stopping_tokens=None,
+        **kwargs,
     ) -> None:
         super().__init__(
             model,
