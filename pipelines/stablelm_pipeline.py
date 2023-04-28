@@ -1,4 +1,7 @@
+from typing import List, Optional, Union
+
 import torch
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from ._base import BasePipeline
 
@@ -16,11 +19,11 @@ PROMPT_FOR_GENERATION_FORMAT = SYSTEM_PROMPT + "<|USER|>{instruction}<|ASSISTANT
 class StableLMPipeline(BasePipeline):
     def __init__(
         self,
-        model,
-        tokenizer,
-        prompt_format=None,
-        device=None,
-        stopping_tokens=None,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        prompt_format: Optional[str] = None,
+        device: Optional[Union[str, int, torch.device]] = None,
+        stopping_tokens: List[Union[int, str]] = None,
         **kwargs
     ) -> None:
         super().__init__(
@@ -31,9 +34,10 @@ class StableLMPipeline(BasePipeline):
             else PROMPT_FOR_GENERATION_FORMAT,
             device,
             stopping_tokens,
+            **kwargs
         )
 
-    def preprocess(self, prompts, **generate_kwargs):
+    def preprocess(self, prompts: List[str], **generate_kwargs):
         prompt_text = self._construct_prompts(
             prompts,
         )
@@ -59,7 +63,7 @@ class StableLMPipeline(BasePipeline):
             "instruction_text": instruction_text,
         }
 
-    def postprocess(self, model_outputs, **generate_kwargs):
+    def postprocess(self, model_outputs, **generate_kwargs) -> List[str]:
         tokens = model_outputs["generated_sequence"]
         instruction_text = model_outputs["instruction_text"]
         decoded = []

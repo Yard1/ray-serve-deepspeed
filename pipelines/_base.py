@@ -1,11 +1,18 @@
 from abc import ABC, abstractmethod
 from collections import UserDict
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
+from transformers import (
+    PreTrainedModel,
+    PreTrainedTokenizer,
+    StoppingCriteria,
+    StoppingCriteriaList,
+)
 
 from models import Prompt
 
+from ..initializers._base import LLMInitializer
 from .utils import get_special_token_id
 
 
@@ -14,11 +21,11 @@ class BasePipeline(ABC):
 
     def __init__(
         self,
-        model,
-        tokenizer,
-        prompt_format=None,
-        device=None,
-        stopping_tokens=None,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        prompt_format: Optional[str] = None,
+        device: Optional[Union[str, int, torch.device]] = None,
+        stopping_tokens: List[Union[int, str]] = None,
         **kwargs,
     ) -> None:
         self.model = model
@@ -50,13 +57,13 @@ class BasePipeline(ABC):
     @classmethod
     def from_initializer(
         cls,
-        initializer,
-        model_name,
-        prompt_format=None,
-        device=None,
-        stopping_tokens=None,
+        initializer: LLMInitializer,
+        model_name: str,
+        prompt_format: Optional[str] = None,
+        device: Optional[Union[str, int, torch.device]] = None,
+        stopping_tokens: List[Union[int, str]] = None,
         **kwargs,
-    ):
+    ) -> "BasePipeline":
         model, tokenizer = initializer.load(model_name)
         return cls(
             model,
@@ -67,9 +74,9 @@ class BasePipeline(ABC):
             **kwargs,
         )
 
-    def _get_stopping_criteria(self, stopping_tokens):
-        from transformers import StoppingCriteria, StoppingCriteriaList
-
+    def _get_stopping_criteria(
+        self, stopping_tokens: List[int]
+    ) -> "StoppingCriteriaList":
         class StopOnTokens(StoppingCriteria):
             def __call__(
                 self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
@@ -112,22 +119,24 @@ class BasePipeline(ABC):
         ]
 
     @abstractmethod
-    def preprocess(self, prompts, **generate_kwargs):
+    def preprocess(self, prompts: List[str], **generate_kwargs):
         raise NotImplementedError
 
     @abstractmethod
     def forward(self, model_inputs, **generate_kwargs):
         raise NotImplementedError
 
-    def postprocess(self, model_outputs, **generate_kwargs):
+    def postprocess(self, model_outputs, **generate_kwargs) -> List[str]:
         return model_outputs
 
-    def _set_default_forward_params(self, forward_params):
+    def _set_default_forward_params(self, forward_params: dict) -> None:
         forward_params.setdefault("do_sample", True)
         forward_params.setdefault("top_p", 0.92)
         forward_params.setdefault("top_k", 0)
 
-    def _get_stopping_tokens(self, tokenizer, stopping_tokens):
+    def _get_stopping_tokens(
+        self, tokenizer: PreTrainedTokenizer, stopping_tokens: List[Union[str, int]]
+    ) -> Set[int]:
         if not stopping_tokens:
             return None
         return {
@@ -136,7 +145,7 @@ class BasePipeline(ABC):
         }
 
     @torch.inference_mode()
-    def __call__(self, inputs, **kwargs):
+    def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[str]:
         (
             preprocess_params,
             forward_params,
@@ -167,7 +176,7 @@ class BasePipeline(ABC):
         """
         return self._ensure_tensor_on_device(inputs, self.device)
 
-    def _ensure_tensor_on_device(self, inputs, device):
+    def _ensure_tensor_on_device(self, inputs, device: torch.device):
         from transformers.utils import ModelOutput
 
         if isinstance(inputs, ModelOutput):
@@ -205,7 +214,9 @@ class BasePipeline(ABC):
         else:
             return inputs
 
-    def _sanitize_parameters(self, return_full_text: bool = None, **generate_kwargs):
+    def _sanitize_parameters(
+        self, return_full_text: bool = None, **generate_kwargs
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         preprocess_params = {}
 
         forward_params = generate_kwargs

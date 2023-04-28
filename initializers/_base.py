@@ -2,7 +2,12 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizer,
+)
 
 
 class LLMInitializer(ABC):
@@ -22,25 +27,25 @@ class LLMInitializer(ABC):
     def get_model_from_pretrained_kwargs(self) -> Dict[str, Any]:
         pass
 
-    def load(self, model_name) -> Tuple["AutoModelForCausalLM", "AutoTokenizer"]:
+    def load(self, model_name) -> Tuple["PreTrainedModel", "PreTrainedTokenizer"]:
         model = self.load_model(model_name)
         tokenizer = self.load_tokenizer(model_name)
         return self.postprocess_model(model), self.postprocess_tokenizer(tokenizer)
 
-    def load_model(self, model_name: str) -> "AutoModelForCausalLM":
+    def load_model(self, model_name: str) -> "PreTrainedModel":
         model = AutoModelForCausalLM.from_pretrained(
             model_name, **self.get_model_from_pretrained_kwargs()
         )
         model.eval()
         return model
 
-    def load_tokenizer(self, tokenizer_name: str) -> "AutoTokenizer":
+    def load_tokenizer(self, tokenizer_name: str) -> "PreTrainedTokenizer":
         return AutoTokenizer.from_pretrained(tokenizer_name, padding_side="left")
 
-    def postprocess_model(
-        self, model: "AutoModelForCausalLM"
-    ) -> "AutoModelForCausalLM":
+    def postprocess_model(self, model: "PreTrainedModel") -> "PreTrainedModel":
         return model
 
-    def postprocess_tokenizer(self, tokenizer: "AutoTokenizer") -> "AutoTokenizer":
+    def postprocess_tokenizer(
+        self, tokenizer: "PreTrainedTokenizer"
+    ) -> "PreTrainedTokenizer":
         return tokenizer

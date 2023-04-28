@@ -5,6 +5,7 @@ from transformers import AutoModelForCausalLM
 from ._base import LLMInitializer
 
 
+# TODO: Allow deepspeed kwargs
 class DeepSpeedInitializer(LLMInitializer):
     def __init__(
         self,
@@ -21,6 +22,7 @@ class DeepSpeedInitializer(LLMInitializer):
         )
         self.max_tokens = max_tokens
         self.use_kernel = use_kernel
+        # TODO: Allow conversion from strings (need to do dynamic imports)
         self.injection_policy = injection_policy
 
     def get_model_from_pretrained_kwargs(self):

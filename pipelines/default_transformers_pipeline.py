@@ -1,17 +1,23 @@
-import torch
-from transformers import pipeline
+from typing import List, Optional, Union
 
+import torch
+from transformers import Pipeline as TransformersPipeline
+from transformers import PreTrainedModel, PreTrainedTokenizer, pipeline
+
+from models import Prompt
+
+from ..initializers._base import LLMInitializer
 from ._base import BasePipeline
 
 
 class DefaultTransformersPipeline(BasePipeline):
     def __init__(
         self,
-        model,
-        tokenizer,
-        prompt_format=None,
-        device=None,
-        stopping_tokens=None,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        prompt_format: Optional[str] = None,
+        device: Optional[Union[str, int, torch.device]] = None,
+        stopping_tokens: List[Union[int, str]] = None,
         **kwargs
     ) -> None:
         super().__init__(
@@ -20,7 +26,7 @@ class DefaultTransformersPipeline(BasePipeline):
 
         self.pipeline = None
 
-    def _get_transformers_pipeline(self, **kwargs):
+    def _get_transformers_pipeline(self, **kwargs) -> TransformersPipeline:
         default_kwargs = dict(
             task="text-generation",
             model=self.model,
@@ -32,7 +38,7 @@ class DefaultTransformersPipeline(BasePipeline):
         return transformers_pipe
 
     @torch.inference_mode()
-    def __call__(self, inputs, **kwargs):
+    def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[str]:
         if not self.pipeline:
             self.pipeline = self._get_transformers_pipeline()
         default_kwargs = dict(stopping_criteria=self.stopping_criteria)
@@ -42,13 +48,13 @@ class DefaultTransformersPipeline(BasePipeline):
     @classmethod
     def from_initializer(
         cls,
-        initializer,
-        model_name,
-        prompt_format=None,
-        device=None,
-        stopping_tokens=None,
+        initializer: LLMInitializer,
+        model_name: str,
+        prompt_format: Optional[str] = None,
+        device: Optional[Union[str, int, torch.device]] = None,
+        stopping_tokens: List[Union[int, str]] = None,
         **kwargs
-    ):
+    ) -> "DefaultTransformersPipeline":
         default_kwargs = dict(
             model=model_name,
             device=None,
@@ -70,7 +76,7 @@ class DefaultTransformersPipeline(BasePipeline):
         transformers_pipe.device = pipe.device
         return pipe
 
-    def preprocess(self, prompts, **generate_kwargs):
+    def preprocess(self, prompts: List[str], **generate_kwargs):
         pass
 
     def forward(self, model_inputs, **generate_kwargs):

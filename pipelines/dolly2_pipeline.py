@@ -2,7 +2,10 @@
 
 import logging
 import re
-from typing import List
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import torch
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from ._base import BasePipeline
 from .utils import get_special_token_id
@@ -34,11 +37,11 @@ class DollyV2Pipeline(BasePipeline):
 
     def __init__(
         self,
-        model,
-        tokenizer,
-        prompt_format=None,
-        device=None,
-        stopping_tokens=None,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        prompt_format: Optional[str] = None,
+        device: Optional[Union[str, int, torch.device]] = None,
+        stopping_tokens: List[Union[int, str]] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -49,9 +52,10 @@ class DollyV2Pipeline(BasePipeline):
             else PROMPT_FOR_GENERATION_FORMAT,
             device,
             stopping_tokens,
+            **kwargs,
         )
 
-    def preprocess(self, prompts, **generate_kwargs):
+    def preprocess(self, prompts: List[str], **generate_kwargs):
         prompt_text = self._construct_prompts(prompts)
         instruction_text = self._construct_prompts(prompts, prompt_format="")
         inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True)
@@ -91,10 +95,10 @@ class DollyV2Pipeline(BasePipeline):
     def postprocess(
         self,
         model_outputs,
-        response_key_token_id,
-        end_key_token_id,
+        response_key_token_id: int,
+        end_key_token_id: int,
         return_full_text: bool = False,
-    ):
+    ) -> List[str]:
         generated_sequences = model_outputs["generated_sequence"]
         instruction_texts = model_outputs["instruction_text"]
 
@@ -171,7 +175,9 @@ class DollyV2Pipeline(BasePipeline):
 
         return records
 
-    def _sanitize_parameters(self, return_full_text: bool = None, **generate_kwargs):
+    def _sanitize_parameters(
+        self, return_full_text: bool = None, **generate_kwargs
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         preprocess_params = {}
 
         # newer versions of the tokenizer configure the response key as a special token.  newer versions still may
