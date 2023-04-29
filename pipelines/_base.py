@@ -74,6 +74,10 @@ class BasePipeline(ABC):
             stopping_tokens=stopping_tokens,
             **kwargs,
         )
+    
+    @property
+    def _default_stopping_tokens(self) -> List[int]:
+        return []
 
     def _get_stopping_criteria(
         self, stopping_tokens: List[int]

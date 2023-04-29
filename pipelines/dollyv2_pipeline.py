@@ -57,6 +57,12 @@ class DollyV2Pipeline(BasePipeline):
             **kwargs,
         )
 
+    @property
+    def _default_stopping_tokens(self) -> List[int]:
+        if not hasattr(self, "__default_stopping_tokens"):
+            self.__default_stopping_tokens = [get_special_token_id(self.tokenizer, END_KEY)]
+        return self.__default_stopping_tokens
+
     def preprocess(self, prompts: List[str], **generate_kwargs):
         prompt_text = self._construct_prompts(prompts)
         instruction_text = self._construct_prompts(prompts, prompt_format="")
@@ -75,6 +81,10 @@ class DollyV2Pipeline(BasePipeline):
         else:
             in_b = input_ids.shape[0]
 
+        generate_kwargs = {
+            **dict(stopping_criteria=self.stopping_criteria),
+            **generate_kwargs,
+        }
         generated_sequence = self.model.generate(
             input_ids=input_ids.to(self.model.device),
             attention_mask=attention_mask,

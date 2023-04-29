@@ -39,6 +39,10 @@ class StableLMPipeline(BasePipeline):
             **kwargs,
         )
 
+    @property
+    def _default_stopping_tokens(self) -> List[int]:
+        return [50278, 50279, 50277, 1, 0]
+
     def preprocess(self, prompts: List[str], **generate_kwargs):
         prompt_text = self._construct_prompts(
             prompts,
@@ -56,10 +60,12 @@ class StableLMPipeline(BasePipeline):
             if torch.is_tensor(inputs[t]):
                 inputs[t] = inputs[t].to(self.model.device)
 
-        generate_kwargs = {**inputs, **dict(stopping_criteria=self.stopping_criteria), **generate_kwargs}
-        generated_sequence = self.model.generate(
-            **generate_kwargs
-        )
+        generate_kwargs = {
+            **inputs,
+            **dict(stopping_criteria=self.stopping_criteria),
+            **generate_kwargs,
+        }
+        generated_sequence = self.model.generate(**generate_kwargs)
         return {
             "generated_sequence": generated_sequence,
             "instruction_text": instruction_text,

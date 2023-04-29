@@ -22,11 +22,10 @@ def set_transformers_cache(location: str):
     if (
         os.path.isdir(old_cache_path)
         and not os.path.isdir(transformers.utils.hub.default_cache_path)
-        and "PYTORCH_PRETRAINED_BERT_CACHE" not in os.environ
-        and "PYTORCH_TRANSFORMERS_CACHE" not in os.environ
-        and "TRANSFORMERS_CACHE" not in os.environ
     ):
         shutil.move(old_cache_path, transformers.utils.hub.default_cache_path)
+    else:
+        os.makedirs(transformers.utils.hub.default_cache_path, exist_ok=True)
 
     transformers.utils.hub.PYTORCH_PRETRAINED_BERT_CACHE = os.getenv(
         "PYTORCH_PRETRAINED_BERT_CACHE", transformers.utils.hub.default_cache_path

@@ -36,8 +36,8 @@ deployments:
       generation_kwargs:
         do_sample: true
         max_new_tokens: 256
-        top_k: 0
-        top_p: 0.92
+        temperature: 1.0
+        top_p: 1.0
       mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
       mode:
         type: DeepSpeed
@@ -52,7 +52,7 @@ deployments:
       num_cpus_per_worker: 4
 
 - name: LLMDeployment_1
-  max_concurrent_queries: 8
+  max_concurrent_queries: 2
   autoscaling_config:
     min_replicas: 2
     initial_replicas: 2
@@ -69,14 +69,14 @@ deployments:
   user_config:
     hf_home: /nvme/cache
     model_config:
-      max_batch_size: 8
+      max_batch_size: 2
       dtype: float16
       from_pretrained_kwargs: {}
       generation_kwargs:
         do_sample: true
         max_new_tokens: 256
-        top_k: 0
-        top_p: 0.92
+        temperature: 1.0
+        top_p: 1.0
       mirror_bucket_uri: s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/
       mode:
         type: DeepSpeed

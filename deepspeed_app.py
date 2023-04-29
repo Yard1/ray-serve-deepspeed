@@ -76,7 +76,7 @@ class LLMDeployment(LLMPredictor):
         self.checkpoint = Checkpoint.from_dict({"config": self.args})
         self.scaling_config = scaling_config
         self.init_worker_group(scaling_config)
-        asyncio.create_task(self.generate_text_batch([]))
+        asyncio.create_task(self.generate_text_batch(None))
         print("reconfigured")
 
     def _set_batch_queue_batch_size(self):
@@ -90,8 +90,8 @@ class LLMDeployment(LLMPredictor):
         """Generate text from the given prompts in batch"""
         self._set_batch_queue_batch_size()
         print(f"Received {len(prompts)} prompts", prompts)
-        if not prompts:
-            return []
+        if not prompts or prompts[0] is None:
+            return prompts
         data_ref = ray.put(prompts)
         prediction = (
             await asyncio.gather(
@@ -125,7 +125,7 @@ class RouterDeployment:
             models = list(self.models.values())
         else:
             keys = [model]
-            models = self.models[model]
+            models = [self.models[model]]
         prompts = await asyncio.gather(
             *(
                 await asyncio.gather(

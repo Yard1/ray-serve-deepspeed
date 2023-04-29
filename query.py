@@ -7,7 +7,10 @@ import requests
 def send_query(text, host):
     print(f"Sending query '{text}'")
     resp = requests.post(host, json={"prompt": text})
-    return resp.json()
+    try:
+        return resp.json()
+    except Exception:
+        return resp.text
 
 
 if __name__ == "__main__":
