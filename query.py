@@ -1,6 +1,5 @@
 import argparse
-import json
-import time
+from pprint import pprint
 
 import requests
 
@@ -8,7 +7,7 @@ import requests
 def send_query(text, host):
     print(f"Sending query '{text}'")
     resp = requests.post(host, json={"prompt": text})
-    return resp.text
+    return resp.json()
 
 
 if __name__ == "__main__":
@@ -26,4 +25,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    print(send_query(args.prompt, args.host))
+    pprint(send_query(args.prompt, args.host))

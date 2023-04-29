@@ -2,7 +2,7 @@ from typing import Type
 
 from ._base import BasePipeline
 from .default_transformers_pipeline import DefaultTransformersPipeline
-from .dolly2_pipeline import DollyV2Pipeline
+from .dollyv2_pipeline import DollyV2Pipeline
 from .stablelm_pipeline import StableLMPipeline
 
 

@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import torch
 from transformers import Pipeline as TransformersPipeline
@@ -6,8 +6,10 @@ from transformers import PreTrainedModel, PreTrainedTokenizer, pipeline
 
 from models import Prompt
 
-from ..initializers._base import LLMInitializer
 from ._base import BasePipeline
+
+if TYPE_CHECKING:
+    from ..initializers._base import LLMInitializer
 
 
 class DefaultTransformersPipeline(BasePipeline):
@@ -48,7 +50,7 @@ class DefaultTransformersPipeline(BasePipeline):
     @classmethod
     def from_initializer(
         cls,
-        initializer: LLMInitializer,
+        initializer: "LLMInitializer",
         model_name: str,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,

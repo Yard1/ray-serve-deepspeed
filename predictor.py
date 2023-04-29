@@ -1,3 +1,4 @@
+import gc
 import os
 from typing import List, Optional
 
@@ -27,7 +28,7 @@ def init_model(
     llm_config: LLM,
     world_size: int,
     local_rank: int,
-    batch_size: Optional[int] = None,
+    max_batch_size: Optional[int] = None,
 ):
     """Initialize the model"""
     # Lazy import so that the new cache location is used
@@ -54,7 +55,7 @@ def init_model(
     # For DS w/ kernel inject, first batch the model gets MUST be of maximum batch size,
     # otherwise subsequent batches with more entries than the first batch
     # will raise CUDA errors if use_kernel=True.
-    batch_size = batch_size or 1
+    batch_size = max_batch_size or 1
     max_new_tokens = llm_config.generation_kwargs.get("max_new_tokens", 256)
     resp1 = generate(
         [WARMUP_PROMPT] * batch_size, pipeline, max_new_tokens=max_new_tokens
@@ -107,7 +108,7 @@ class PredictionWorker(TorchDistributedWorker):
             self.llm_config,
             self.world_size,
             local_rank,
-            batch_size=self.llm_config.batch_size,
+            max_batch_size=self.llm_config.max_batch_size,
         )
 
     def generate(self, data: List[Prompt], **kwargs) -> List[str]:
@@ -118,6 +119,7 @@ class LLMPredictor(Predictor):
     def __init__(self, checkpoint: Checkpoint, scaling_config: ScalingConfig) -> None:
         self.checkpoint = checkpoint
         self.scaling_config = scaling_config
+        self.prediction_workers = None
         self.init_worker_group(scaling_config)
 
     def init_worker_group(self, scaling_config: ScalingConfig):
@@ -128,6 +130,9 @@ class LLMPredictor(Predictor):
         one worker will destroy the entire group). Each worker in the group
         recieves the same input data and outputs the same generated text.
         """
+        self.prediction_workers = None
+        gc.collect()
+
         config = self.checkpoint.to_dict()["config"]
         llm_config = config.model_config
 

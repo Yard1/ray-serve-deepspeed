@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import UserDict
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 from transformers import (
@@ -12,8 +12,10 @@ from transformers import (
 
 from models import Prompt
 
-from ..initializers._base import LLMInitializer
 from .utils import get_special_token_id
+
+if TYPE_CHECKING:
+    from ..initializers._base import LLMInitializer
 
 
 class BasePipeline(ABC):
@@ -32,6 +34,7 @@ class BasePipeline(ABC):
         self.tokenizer = tokenizer
         self.prompt_format: str = prompt_format or ""
         self.stopping_tokens = self._get_stopping_tokens(tokenizer, stopping_tokens)
+        self.stopping_criteria = self._get_stopping_criteria(self.stopping_tokens)
         self.kwargs = kwargs
 
         if device is None:
@@ -52,12 +55,10 @@ class BasePipeline(ABC):
         else:
             self.device = torch.device(f"cuda:{device}")
 
-        self.stopping_criteria = self._get_stopping_criteria(self.stopping_tokens)
-
     @classmethod
     def from_initializer(
         cls,
-        initializer: LLMInitializer,
+        initializer: "LLMInitializer",
         model_name: str,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
@@ -91,7 +92,7 @@ class BasePipeline(ABC):
                         return True
                 return False
 
-        self.stopping_criteria = StoppingCriteriaList([StopOnTokens()])
+        return StoppingCriteriaList([StopOnTokens()])
 
     def _construct_prompt(self, prompt: Union[str, Prompt], prompt_format: str) -> str:
         if isinstance(prompt, Prompt):

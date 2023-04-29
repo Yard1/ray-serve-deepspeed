@@ -10,7 +10,7 @@ from typing import Optional
 
 from filelock import FileLock
 
-from huggingface_utils import download_model
+from huggingface_utils import download_model, set_transformers_cache
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ def initialize_node(
 ):
     if hf_home:
         os.environ["HF_HOME"] = hf_home
+        set_transformers_cache(hf_home)
 
     # Timeout in 10 minutes
     lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)

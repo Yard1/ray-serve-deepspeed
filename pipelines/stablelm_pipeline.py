@@ -24,17 +24,19 @@ class StableLMPipeline(BasePipeline):
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
         stopping_tokens: List[Union[int, str]] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
-            model,
-            tokenizer,
-            prompt_format
-            if prompt_format is not None
-            else PROMPT_FOR_GENERATION_FORMAT,
-            device,
-            stopping_tokens,
-            **kwargs
+            model=model,
+            tokenizer=tokenizer,
+            prompt_format=(
+                prompt_format
+                if prompt_format is not None
+                else PROMPT_FOR_GENERATION_FORMAT
+            ),
+            device=device,
+            stopping_tokens=stopping_tokens,
+            **kwargs,
         )
 
     def preprocess(self, prompts: List[str], **generate_kwargs):
@@ -54,9 +56,9 @@ class StableLMPipeline(BasePipeline):
             if torch.is_tensor(inputs[t]):
                 inputs[t] = inputs[t].to(self.model.device)
 
-        generate_kwargs = {**inputs, **generate_kwargs}
+        generate_kwargs = {**inputs, **dict(stopping_criteria=self.stopping_criteria), **generate_kwargs}
         generated_sequence = self.model.generate(
-            **generate_kwargs, stopping_criteria=self.stopping_criteria
+            **generate_kwargs
         )
         return {
             "generated_sequence": generated_sequence,

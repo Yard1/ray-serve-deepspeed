@@ -1,11 +1,57 @@
 import gc
 import os
+import shutil
 import subprocess
 from collections import defaultdict
 from unittest.mock import patch
 
 import torch
 from filelock import FileLock
+
+
+def set_transformers_cache(location: str):
+    import transformers.utils.hub
+
+    old_cache_path = os.path.join(transformers.utils.hub.hf_cache_home, "hub")
+    transformers.utils.hub.hf_cache_home = os.path.expanduser(location)
+    transformers.utils.hub.default_cache_path = os.path.join(
+        transformers.utils.hub.hf_cache_home, "hub"
+    )
+
+    # Onetime move from the old location to the new one.
+    if (
+        os.path.isdir(old_cache_path)
+        and not os.path.isdir(transformers.utils.hub.default_cache_path)
+        and "PYTORCH_PRETRAINED_BERT_CACHE" not in os.environ
+        and "PYTORCH_TRANSFORMERS_CACHE" not in os.environ
+        and "TRANSFORMERS_CACHE" not in os.environ
+    ):
+        shutil.move(old_cache_path, transformers.utils.hub.default_cache_path)
+
+    transformers.utils.hub.PYTORCH_PRETRAINED_BERT_CACHE = os.getenv(
+        "PYTORCH_PRETRAINED_BERT_CACHE", transformers.utils.hub.default_cache_path
+    )
+    transformers.utils.hub.PYTORCH_TRANSFORMERS_CACHE = os.getenv(
+        "PYTORCH_TRANSFORMERS_CACHE",
+        transformers.utils.hub.PYTORCH_PRETRAINED_BERT_CACHE,
+    )
+    transformers.utils.hub.HUGGINGFACE_HUB_CACHE = os.getenv(
+        "HUGGINGFACE_HUB_CACHE", transformers.utils.hub.PYTORCH_TRANSFORMERS_CACHE
+    )
+    transformers.utils.hub.TRANSFORMERS_CACHE = os.getenv(
+        "TRANSFORMERS_CACHE", transformers.utils.hub.HUGGINGFACE_HUB_CACHE
+    )
+    transformers.utils.hub.HF_MODULES_CACHE = os.getenv(
+        "HF_MODULES_CACHE",
+        os.path.join(transformers.utils.hub.hf_cache_home, "modules"),
+    )
+    transformers.utils.hub.cache_version_file = os.path.join(
+        transformers.utils.hub.TRANSFORMERS_CACHE, "version.txt"
+    )
+    transformers.utils.hub.move_cache(
+        transformers.utils.hub.TRANSFORMERS_CACHE,
+        transformers.utils.hub.TRANSFORMERS_CACHE,
+    )
 
 
 def shard_checkpoint_contiguous(

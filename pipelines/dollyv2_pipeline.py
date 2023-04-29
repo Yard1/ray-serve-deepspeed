@@ -45,13 +45,15 @@ class DollyV2Pipeline(BasePipeline):
         **kwargs,
     ) -> None:
         super().__init__(
-            model,
-            tokenizer,
-            prompt_format
-            if prompt_format is not None
-            else PROMPT_FOR_GENERATION_FORMAT,
-            device,
-            stopping_tokens,
+            model=model,
+            tokenizer=tokenizer,
+            prompt_format=(
+                prompt_format
+                if prompt_format is not None
+                else PROMPT_FOR_GENERATION_FORMAT
+            ),
+            device=device,
+            stopping_tokens=stopping_tokens,
             **kwargs,
         )
 
@@ -169,9 +171,7 @@ class DollyV2Pipeline(BasePipeline):
                 if return_full_text:
                     decoded = f"{instruction_text}\n{decoded}"
 
-                rec = {"generated_text": decoded}
-
-                records.append(rec)
+                records.append(decoded)
 
         return records
 

@@ -72,7 +72,7 @@ class LLM(BaseModelExtended):
     mode: Annotated[Union[DeviceMap, DeepSpeed], Field(discriminator="type")]
     pipeline_cls: str
     prompt_format: Optional[str] = None
-    batch_size: int = 1
+    max_batch_size: int = 1
     dtype: str = "float16"
     generation_kwargs: Dict[str, Any] = {
         "max_new_tokens": 256,
