@@ -10,22 +10,36 @@ from filelock import FileLock
 
 
 def set_transformers_cache(location: str):
+    import huggingface_hub.constants
     import transformers.utils.hub
+
+    os.makedirs(location, exist_ok=True)
 
     old_cache_path = os.path.join(transformers.utils.hub.hf_cache_home, "hub")
     transformers.utils.hub.hf_cache_home = os.path.expanduser(location)
+    huggingface_hub.constants.hf_cache_home = transformers.utils.hub.hf_cache_home
     transformers.utils.hub.default_cache_path = os.path.join(
         transformers.utils.hub.hf_cache_home, "hub"
     )
+    huggingface_hub.constants.default_cache_path = (
+        transformers.utils.hub.default_cache_path
+    )
+    huggingface_hub.constants.default_assets_cache_path = os.path.join(
+        huggingface_hub.constants.hf_cache_home, "assets"
+    )
+
+    huggingface_hub.constants.HUGGINGFACE_HUB_CACHE = os.getenv(
+        "HUGGINGFACE_HUB_CACHE", huggingface_hub.constants.default_cache_path
+    )
+    huggingface_hub.constants.HUGGINGFACE_ASSETS_CACHE = os.getenv(
+        "HUGGINGFACE_ASSETS_CACHE", huggingface_hub.constants.default_assets_cache_path
+    )
 
     # Onetime move from the old location to the new one.
-    if (
-        os.path.isdir(old_cache_path)
-        and not os.path.isdir(transformers.utils.hub.default_cache_path)
+    if os.path.isdir(old_cache_path) and not os.path.isdir(
+        transformers.utils.hub.default_cache_path
     ):
         shutil.move(old_cache_path, transformers.utils.hub.default_cache_path)
-    else:
-        os.makedirs(transformers.utils.hub.default_cache_path, exist_ok=True)
 
     transformers.utils.hub.PYTORCH_PRETRAINED_BERT_CACHE = os.getenv(
         "PYTORCH_PRETRAINED_BERT_CACHE", transformers.utils.hub.default_cache_path
@@ -173,10 +187,13 @@ def download_model(model_name: str, bucket_uri: str):
     path = os.path.expanduser(
         os.path.join(TRANSFORMERS_CACHE, f"models--{model_name.replace('/', '--')}")
     )
-    subprocess.run(["mkdir", "-p", os.path.join(path, "snapshots", "main")])
+    subprocess.run(
+        ["aws", "s3", "cp", "--quiet", os.path.join(bucket_uri, "hash"), "."]
+    )
+    with open(os.path.join(".", "hash"), "r") as f:
+        f_hash = f.read().strip()
+    subprocess.run(["mkdir", "-p", os.path.join(path, "snapshots", f_hash)])
     subprocess.run(["mkdir", "-p", os.path.join(path, "refs")])
-    if os.path.exists(os.path.join(path, "refs", "main")):
-        return
     subprocess.run(
         [
             "aws",
@@ -184,13 +201,8 @@ def download_model(model_name: str, bucket_uri: str):
             "sync",
             "--quiet",
             bucket_uri,
-            os.path.join(path, "snapshots", "main"),
+            os.path.join(path, "snapshots", f_hash),
         ]
     )
-    with open(os.path.join(path, "snapshots", "main", "hash"), "r") as f:
-        f_hash = f.read().strip()
     with open(os.path.join(path, "refs", "main"), "w") as f:
         f.write(f_hash)
-    os.rename(
-        os.path.join(path, "snapshots", "main"), os.path.join(path, "snapshots", f_hash)
-    )

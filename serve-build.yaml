@@ -1,6 +1,6 @@
 # This file was generated using the `serve build` command on Ray v3.0.0.dev0.
 
-import_path: deepspeed_app:entrypoint
+import_path: app:entrypoint
 
 runtime_env: 
   env_vars:
@@ -35,9 +35,8 @@ deployments:
       from_pretrained_kwargs: {}
       generation_kwargs:
         do_sample: true
-        max_new_tokens: 256
-        temperature: 1.0
-        top_p: 1.0
+        max_new_tokens: 512
+        temperature: 0.7
       mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
       mode:
         type: DeepSpeed
@@ -74,9 +73,9 @@ deployments:
       from_pretrained_kwargs: {}
       generation_kwargs:
         do_sample: true
-        max_new_tokens: 256
-        temperature: 1.0
-        top_p: 1.0
+        max_new_tokens: 512
+        top_p: 0.92
+        top_k: 0
       mirror_bucket_uri: s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/
       mode:
         type: DeepSpeed

@@ -1,8 +1,8 @@
-# Ray-DeepSpeed-Inference
+# Ray-Serve-LLM
 
 *EXPERIMENTAL AND NOT PRODUCTION READY! Many rough edges.*
 
-Based on https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/text-generation
+Example repository of how to serve multiple LLMs using Ray Serve + (optionally) DeepSpeed.
 
 ## How to run
 

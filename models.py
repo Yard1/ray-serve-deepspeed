@@ -73,6 +73,7 @@ class LLM(BaseModelExtended):
     pipeline_cls: str
     prompt_format: Optional[str] = None
     max_batch_size: int = 1
+    batch_wait_timeout_s: int = 1
     dtype: str = "float16"
     generation_kwargs: Dict[str, Any] = {
         "max_new_tokens": 256,

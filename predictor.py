@@ -22,6 +22,8 @@ from utils import initialize_node, timeit
 
 WARMUP_PROMPT = "Write a short story."
 
+initialize_node_remote = ray.remote(initialize_node)
+
 
 @timeit
 def init_model(
@@ -56,7 +58,7 @@ def init_model(
     # otherwise subsequent batches with more entries than the first batch
     # will raise CUDA errors if use_kernel=True.
     batch_size = max_batch_size or 1
-    max_new_tokens = llm_config.generation_kwargs.get("max_new_tokens", 256)
+    max_new_tokens = 256
     resp1 = generate(
         [WARMUP_PROMPT] * batch_size, pipeline, max_new_tokens=max_new_tokens
     )
@@ -93,17 +95,11 @@ class PredictionWorker(TorchDistributedWorker):
     def init_model(
         self,
         local_rank: int,
-        hf_home: Optional[str] = None,
         num_cpus_per_worker: int = 1,
     ):
         """Initialize model for inference"""
         os.environ["OMP_NUM_THREADS"] = str(num_cpus_per_worker)
 
-        initialize_node(
-            model_name=self.llm_config.name,
-            bucket_uri=self.llm_config.mirror_bucket_uri,
-            hf_home=hf_home,
-        )
         self.generator = init_model(
             self.llm_config,
             self.world_size,
@@ -138,7 +134,7 @@ class LLMPredictor(Predictor):
 
         # Start a placement group for the workers.
         self.pg = scaling_config.as_placement_group_factory().to_placement_group()
-        prediction_worker_cls = PredictionWorker.options(
+        scaling_options = dict(
             num_cpus=scaling_config.num_cpus_per_worker,
             num_gpus=scaling_config.num_gpus_per_worker,
             resources=scaling_config.additional_resources_per_worker,
@@ -146,6 +142,19 @@ class LLMPredictor(Predictor):
                 placement_group=self.pg, placement_group_capture_child_tasks=True
             ),
         )
+        prediction_worker_cls = PredictionWorker.options(
+            **scaling_options, runtime_env={"env_vars": {"HF_HOME": config.hf_home}}
+        )
+        initialize_node_remote_pg = initialize_node_remote.options(**scaling_options)
+        ray.get(
+            [
+                initialize_node_remote_pg.remote(
+                    llm_config.name, llm_config.mirror_bucket_uri, config.hf_home
+                )
+                for i in range(scaling_config.num_workers)
+            ]
+        )
+
         # Create the prediction workers.
         self.prediction_workers = [
             prediction_worker_cls.remote(llm_config, scaling_config.num_workers)
@@ -164,7 +173,6 @@ class LLMPredictor(Predictor):
             [
                 worker.init_model.remote(
                     local_rank,
-                    hf_home=config.hf_home,
                     num_cpus_per_worker=scaling_config.num_cpus_per_worker,
                 )
                 for worker, local_rank in zip(self.prediction_workers, local_ranks)

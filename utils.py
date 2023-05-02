@@ -32,37 +32,26 @@ def initialize_node(
     bucket_uri: Optional[str] = None,
     hf_home: Optional[str] = "/nvme/cache",
 ):
-    if hf_home:
-        os.environ["HF_HOME"] = hf_home
-        set_transformers_cache(hf_home)
-
     # Timeout in 10 minutes
     lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)
     with lock:
         shutil.rmtree("/home/ray/.cache/torch", ignore_errors=True)
         os.makedirs("/home/ray/.cache/torch/kernels", exist_ok=True)
         if Path("/nvme/.done").exists():
-            print("Skipping node initialization...")
+            print("Skipping nvme initialization...")
         else:
-            print("Executing node initialization...")
-            _initialize_node(
-                bucket_uri=bucket_uri,
-                model_name=model_name,
-            )
+            print("Executing nvme initialization...")
+            _initialize_nvme()
             subprocess.run("touch /nvme/.done", shell=True, check=True)
+        if model_name and bucket_uri:
+            download_model(model_name, bucket_uri)
+            print("Done downloading the model")
 
 
-def _initialize_node(
-    model_name: Optional[str] = None,
-    bucket_uri: Optional[str] = None,
-):
+def _initialize_nvme():
     # Mount nvme
     print("Mounting nvme")
     subprocess.run(
         'drive_name="${1:-/dev/nvme1n1}"; mount_path="${2:-/nvme}"; set -x; sudo file -s "$drive_name"; sudo apt install xfsprogs -y; sudo mkfs -t xfs "$drive_name"; sudo mkdir "$mount_path" && sudo mount "$drive_name" "$mount_path" && sudo chown -R ray "$mount_path"',
         shell=True,
     )
-
-    if model_name and bucket_uri:
-        download_model(model_name, bucket_uri)
-        print("Done downloading the model")

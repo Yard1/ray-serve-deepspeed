@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import UserDict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import torch
 from transformers import (
@@ -74,7 +74,7 @@ class BasePipeline(ABC):
             stopping_tokens=stopping_tokens,
             **kwargs,
         )
-    
+
     @property
     def _default_stopping_tokens(self) -> List[int]:
         return []

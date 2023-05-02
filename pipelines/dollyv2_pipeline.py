@@ -60,7 +60,9 @@ class DollyV2Pipeline(BasePipeline):
     @property
     def _default_stopping_tokens(self) -> List[int]:
         if not hasattr(self, "__default_stopping_tokens"):
-            self.__default_stopping_tokens = [get_special_token_id(self.tokenizer, END_KEY)]
+            self.__default_stopping_tokens = [
+                get_special_token_id(self.tokenizer, END_KEY)
+            ]
         return self.__default_stopping_tokens
 
     def preprocess(self, prompts: List[str], **generate_kwargs):
