@@ -1,18 +1,21 @@
+import warnings
 from abc import ABC, abstractmethod
 from collections import UserDict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
-import warnings
-from transformers.pipelines.text_generation import ReturnType
+
 import torch
 from transformers import (
+    InfNanRemoveLogitsProcessor,
+    LogitsProcessorList,
     PreTrainedModel,
     PreTrainedTokenizer,
-    StoppingCriteria,
     StoppingCriteriaList,
 )
+from transformers.pipelines.text_generation import ReturnType
 
 from models import Prompt
 
+from .processors import StopOnTokensLogitsProcessor
 from .utils import get_special_token_id
 
 if TYPE_CHECKING:
@@ -28,14 +31,11 @@ class BasePipeline(ABC):
         tokenizer: PreTrainedTokenizer,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
-        stopping_tokens: List[Union[int, str]] = None,
         **kwargs,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.prompt_format: str = prompt_format or ""
-        self.stopping_tokens = self._get_stopping_tokens(tokenizer, stopping_tokens)
-        self.stopping_criteria = self._get_stopping_criteria(self.stopping_tokens)
         self.kwargs = kwargs
 
         if device is None:
@@ -63,7 +63,6 @@ class BasePipeline(ABC):
         model_name: str,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
-        stopping_tokens: List[Union[int, str]] = None,
         **kwargs,
     ) -> "BasePipeline":
         model, tokenizer = initializer.load(model_name)
@@ -72,7 +71,6 @@ class BasePipeline(ABC):
             tokenizer,
             prompt_format=prompt_format,
             device=device,
-            stopping_tokens=stopping_tokens,
             **kwargs,
         )
 
@@ -81,29 +79,30 @@ class BasePipeline(ABC):
         return []
 
     def _get_stopping_criteria(
-        self, stopping_tokens: List[int]
-    ) -> "StoppingCriteriaList":
-        class StopOnTokens(StoppingCriteria):
-            def __init__(self) -> None:
-                super().__init__()
-                stop_ids = (
-                    stopping_tokens
-                    if stopping_tokens is not None
-                    else [50278, 50279, 50277, 1, 0]
+        self, generate_kwargs: Dict[str, Any]
+    ) -> StoppingCriteriaList:
+        return StoppingCriteriaList([])
+
+    def _get_logits_processors(
+        self, generate_kwargs: Dict[str, Any]
+    ) -> LogitsProcessorList:
+        lst = []
+        stopping_tokens = self._default_stopping_tokens
+        if generate_kwargs.get("stopping_tokens", None) is not None:
+            stopping_tokens = self._get_stopping_tokens(
+                self.tokenizer, generate_kwargs.pop("stopping_tokens")
+            )
+        if stopping_tokens:
+            lst.append(
+                StopOnTokensLogitsProcessor(
+                    stopping_tokens, self.tokenizer.eos_token_id
                 )
-                self.stop_ids = [torch.LongTensor([stop_id] if not isinstance(stop_id, list) else stop_id) for stop_id in stop_ids]
+            )
 
+        if getattr(self.model, "use_kernel", False):
+            lst.append(InfNanRemoveLogitsProcessor())
 
-            def __call__(
-                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-            ) -> bool:
-                for i, stop_id in enumerate(self.stop_ids):
-                    self.stop_ids[i] = self.stop_ids[i].to(input_ids.device)
-                    if input_ids[0][-len(self.stop_ids[i]):].equal(self.stop_ids[i]):
-                        return True
-                return False
-
-        return StoppingCriteriaList([StopOnTokens()])
+        return LogitsProcessorList(lst)
 
     def _construct_prompt(self, prompt: Union[str, Prompt], prompt_format: str) -> str:
         if isinstance(prompt, Prompt):
@@ -220,6 +219,32 @@ class BasePipeline(ABC):
         else:
             return inputs
 
+    def _add_default_generate_kwargs(
+        self, generate_kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        stopping_criteria = self._get_stopping_criteria(generate_kwargs)
+        if generate_kwargs.get("stopping_criteria", None):
+            generate_kwargs["stopping_criteria"].extend(stopping_criteria)
+            generate_kwargs["stopping_criteria"] = StoppingCriteriaList(
+                generate_kwargs["stopping_criteria"]
+            )
+        else:
+            generate_kwargs["stopping_criteria"] = StoppingCriteriaList(
+                stopping_criteria
+            )
+
+        logits_processor = self._get_logits_processors(generate_kwargs)
+        if generate_kwargs.get("logits_processor", None):
+            generate_kwargs["logits_processor"].extend(logits_processor)
+            generate_kwargs["logits_processor"] = LogitsProcessorList(
+                generate_kwargs["logits_processor"]
+            )
+        else:
+            generate_kwargs["logits_processor"] = LogitsProcessorList(logits_processor)
+
+        generate_kwargs.pop("stopping_tokens", None)
+        return generate_kwargs
+
     def _sanitize_parameters(
         self,
         return_full_text=None,
@@ -231,6 +256,7 @@ class BasePipeline(ABC):
         handle_long_generation=None,
         stop_sequence=None,
         return_token_type_ids=None,
+        stopping_tokens=None,
         **generate_kwargs,
     ):
         preprocess_params = {}
@@ -249,7 +275,9 @@ class BasePipeline(ABC):
             elif "max_length" in generate_kwargs:
                 generate_kwargs["max_length"] += prefix_length
             else:
-                generate_kwargs["max_length"] = self.model.config.max_length + prefix_length
+                generate_kwargs["max_length"] = (
+                    self.model.config.max_length + prefix_length
+                )
 
             if "min_length" in generate_kwargs:
                 generate_kwargs["min_length"] += prefix_length
@@ -261,26 +289,40 @@ class BasePipeline(ABC):
                 )
             preprocess_params["handle_long_generation"] = handle_long_generation
 
-        forward_params = generate_kwargs
+        if stopping_tokens is not None:
+            generate_kwargs["stopping_tokens"] = stopping_tokens
+        forward_params = self._add_default_generate_kwargs(generate_kwargs)
 
         postprocess_params = {}
         if return_full_text is not None and return_type is None:
             if return_text is not None:
-                raise ValueError("`return_text` is mutually exclusive with `return_full_text`")
+                raise ValueError(
+                    "`return_text` is mutually exclusive with `return_full_text`"
+                )
             if return_tensors is not None:
-                raise ValueError("`return_full_text` is mutually exclusive with `return_tensors`")
-            return_type = ReturnType.FULL_TEXT if return_full_text else ReturnType.NEW_TEXT
+                raise ValueError(
+                    "`return_full_text` is mutually exclusive with `return_tensors`"
+                )
+            return_type = (
+                ReturnType.FULL_TEXT if return_full_text else ReturnType.NEW_TEXT
+            )
         if return_tensors is not None and return_type is None:
             if return_text is not None:
-                raise ValueError("`return_text` is mutually exclusive with `return_tensors`")
+                raise ValueError(
+                    "`return_text` is mutually exclusive with `return_tensors`"
+                )
             return_type = ReturnType.TENSORS
         if return_type is not None:
             postprocess_params["return_type"] = return_type
         if clean_up_tokenization_spaces is not None:
-            postprocess_params["clean_up_tokenization_spaces"] = clean_up_tokenization_spaces
+            postprocess_params[
+                "clean_up_tokenization_spaces"
+            ] = clean_up_tokenization_spaces
 
         if stop_sequence is not None:
-            stop_sequence_ids = self.tokenizer.encode(stop_sequence, add_special_tokens=False)
+            stop_sequence_ids = self.tokenizer.encode(
+                stop_sequence, add_special_tokens=False
+            )
             if len(stop_sequence_ids) > 1:
                 warnings.warn(
                     "Stopping on a multiple token sequence is not yet supported on transformers. The first token of"

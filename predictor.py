@@ -1,4 +1,5 @@
 import gc
+import logging
 import os
 from typing import List, Optional
 
@@ -16,6 +17,7 @@ from ray.train.predictor import Predictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from initializers import get_initializer_cls_by_name
+from logger import get_logger
 from models import LLM, Prompt
 from pipelines import get_pipeline_cls_by_name
 from utils import initialize_node, timeit
@@ -23,6 +25,8 @@ from utils import initialize_node, timeit
 WARMUP_PROMPT = "Write a short story."
 
 initialize_node_remote = ray.remote(initialize_node)
+
+logger = get_logger(__name__)
 
 
 @timeit
@@ -33,6 +37,8 @@ def init_model(
     max_batch_size: Optional[int] = None,
 ):
     """Initialize the model"""
+    logger.info(f"Initializing model {llm_config.name}...")
+
     # Lazy import so that the new cache location is used
     torch.backends.cuda.matmul.allow_tf32 = True
     dtype = getattr(torch, llm_config.dtype)
@@ -50,7 +56,10 @@ def init_model(
 
     pipeline_name = llm_config.pipeline_cls
     pipeline = get_pipeline_cls_by_name(pipeline_name).from_initializer(
-        initializer, llm_config.name, prompt_format=llm_config.prompt_format, stopping_tokens=llm_config.stopping_tokens, **llm_config.from_pretrained_kwargs
+        initializer,
+        llm_config.name,
+        prompt_format=llm_config.prompt_format,
+        **llm_config.from_pretrained_kwargs,
     )
 
     # Warmup
@@ -58,15 +67,14 @@ def init_model(
     # otherwise subsequent batches with more entries than the first batch
     # will raise CUDA errors if use_kernel=True.
     batch_size = max_batch_size or 1
-    max_new_tokens = 256
-    generation_kwargs = {**llm_config.generation_kwargs, "max_new_tokens": max_new_tokens, } 
+    logger.info(f"Model {llm_config.name} is warming up...")
     resp1 = generate(
-        [WARMUP_PROMPT] * batch_size, pipeline, **generation_kwargs
+        [WARMUP_PROMPT] * batch_size, pipeline, **llm_config.generation_kwargs
     )
     assert len(resp1) == batch_size
-    generate([WARMUP_PROMPT], pipeline, **generation_kwargs)
+    generate([WARMUP_PROMPT], pipeline, **llm_config.generation_kwargs)
 
-    print("Model succesfully initialized!")
+    logger.info(f"Model {llm_config.name} succesfully initialized!")
 
     return pipeline
 
@@ -98,6 +106,8 @@ class PredictionWorker(TorchDistributedWorker):
         local_rank: int,
         num_cpus_per_worker: int = 1,
     ):
+        get_logger(__name__, rank=int(os.environ["RANK"]), force=True)
+
         """Initialize model for inference"""
         os.environ["OMP_NUM_THREADS"] = str(num_cpus_per_worker)
 
@@ -110,6 +120,9 @@ class PredictionWorker(TorchDistributedWorker):
 
     def generate(self, data: List[Prompt], **kwargs) -> List[str]:
         return generate(data, self.generator, **kwargs)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}:{self.llm_config.name}"
 
 
 class LLMPredictor(Predictor):
@@ -166,8 +179,6 @@ class LLMPredictor(Predictor):
         local_ranks = init_torch_dist_process_group(
             self.prediction_workers, backend="nccl"
         )
-
-        print(self.prediction_workers, local_ranks)
 
         # Initialize model on each worker.
         ray.get(

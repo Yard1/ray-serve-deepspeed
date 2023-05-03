@@ -58,7 +58,8 @@ class DeepSpeedInitializer(LLMInitializer):
             max_tokens=self.max_tokens,
         )
 
-        # Add this attribute for compatibility with the pipeline
+        # Add attributes for compatibility with the pipeline
+        model.use_kernel = self.use_kernel
         model.device = self.device
         model = model.to(self.device)
         return model

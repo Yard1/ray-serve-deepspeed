@@ -8,11 +8,13 @@ from ray import serve
 from ray.air import Checkpoint, ScalingConfig
 from ray.experimental.state.api import list_actors
 from ray.serve.batching import _BatchQueue
-from ray.serve.context import get_global_client
 from ray.serve.deployment import ClassNode
 
-from models import Args, Prompt, DeepSpeed
+from logger import get_logger
+from models import Args, DeepSpeed, Prompt
 from predictor import LLMPredictor
+
+logger = get_logger(__name__)
 
 app = FastAPI()
 
@@ -61,7 +63,7 @@ class LLMDeployment(LLMPredictor):
     @app.post("/")
     async def generate_text(self, prompt: Prompt):
         text = await self.generate_text_batch(prompt)
-        return {"generated_text": text}
+        return text
 
     def _should_reinit_worker_group(
         self, new_args: Args, new_scaling_config: ScalingConfig
@@ -86,8 +88,11 @@ class LLMDeployment(LLMPredictor):
 
         if old_args.model_config.dtype != new_args.model_config.dtype:
             return True
-        
-        if old_args.model_config.max_batch_size != new_args.model_config.max_batch_size and isinstance(new_args.model_config.mode, DeepSpeed):
+
+        if (
+            old_args.model_config.max_batch_size != new_args.model_config.max_batch_size
+            and isinstance(new_args.model_config.mode, DeepSpeed)
+        ):
             return True
 
         # TODO: Allow those below
@@ -112,6 +117,7 @@ class LLMDeployment(LLMPredictor):
         return False
 
     def reconfigure(self, config: Dict[str, Any]) -> None:
+        logger.info("Reconfiguring...")
         if not isinstance(config, Args):
             new_args = Args.parse_obj(config)
         else:
@@ -137,7 +143,7 @@ class LLMDeployment(LLMPredictor):
         if should_reinit_worker_group:
             self.init_worker_group(self.scaling_config)
         asyncio.create_task(self.generate_text_batch(None))
-        print("reconfigured")
+        logger.info("Reconfigured.")
 
     def _set_batch_queue_batch_size(self):
         # Serve abuse to enable dynamic batch sizes
@@ -154,20 +160,21 @@ class LLMDeployment(LLMPredictor):
         self._set_batch_queue_batch_size()
         if not prompts or prompts[0] is None:
             return prompts
-        print(f"Received {len(prompts)} prompts", prompts)
+        logger.info(f"Received {len(prompts)} prompts {prompts}")
         data_ref = ray.put(prompts)
         prediction = (
             await asyncio.gather(
                 *[
                     worker.generate.remote(
                         data_ref,
+                        stopping_tokens=self.args.model_config.stopping_tokens,
                         **self.args.model_config.generation_kwargs,
                     )
                     for worker in self.prediction_workers
                 ]
             )
         )[0]
-        print("Predictions", prediction)
+        logger.info(f"Predictions {prediction}")
         if not isinstance(prediction, list):
             return [prediction]
         return prediction[: len(prompts)]
@@ -189,6 +196,9 @@ class LLMDeployment(LLMPredictor):
                     f"At least one prediction worker is dead. Dead workers: {dead_actors}"
                 )
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}:{self.args.model_config.name}"
+
 
 @serve.deployment(
     route_prefix="/",
@@ -197,7 +207,6 @@ class LLMDeployment(LLMPredictor):
 class RouterDeployment:
     def __init__(self, models: Dict[str, ClassNode]) -> None:
         self._models = models
-        print(self._models)
 
     @app.post("/query/{model}")
     async def query(self, model: str, prompt: Prompt):
@@ -215,7 +224,7 @@ class RouterDeployment:
                 )
             )
         )
-        print(prompts)
+        logger.info(prompts)
         return {key: prompt for key, prompt in zip(keys, prompts)}
 
     @app.get("/models")

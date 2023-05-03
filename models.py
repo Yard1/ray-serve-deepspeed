@@ -47,6 +47,42 @@ class Prompt(BaseModelExtended):
         return self.prompt
 
 
+class Response(BaseModelExtended):
+    text: str
+    num_generated_tokens: Optional[int] = None
+    preprocessing_time: Optional[float] = None
+    generation_time: Optional[float] = None
+    postprocessing_time: Optional[float] = None
+
+    @property
+    def total_time(self) -> Optional[float]:
+        try:
+            return (
+                self.preprocessing_time
+                + self.generation_time
+                + self.postprocessing_time
+            )
+        except Exception:
+            return None
+
+    @property
+    def time_per_token(self) -> Optional[float]:
+        try:
+            return self.total_time / self.num_generated_tokens
+        except Exception:
+            return None
+
+    @property
+    def generation_time_per_token(self) -> Optional[float]:
+        try:
+            return self.generation_time / self.num_generated_tokens
+        except Exception:
+            return None
+
+    def __str__(self) -> str:
+        return self.text
+
+
 class Framework(BaseModelExtended, extra=Extra.forbid):
     type: str
 
@@ -102,9 +138,11 @@ class LLM(BaseModelExtended):
                 return int(x)
             except Exception:
                 return x
+
         if value:
             value = try_int(value)
         return value
+
 
 class Scaling(BaseModelExtended):
     num_workers: int

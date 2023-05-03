@@ -1,3 +1,5 @@
+from typing import List, Union
+
 from transformers import PreTrainedTokenizer
 
 
@@ -19,3 +21,25 @@ def get_special_token_id(tokenizer: PreTrainedTokenizer, key: str) -> int:
             f"Expected only a single token for '{key}' but found {token_ids}"
         )
     return token_ids[0]
+
+
+def remove_dangling_stop_tokens(
+    tokens: List[int],
+    stop_ids: List[Union[int, List[int]]],
+    eos_token_id: Union[int, List[int]],
+) -> List[int]:
+    if isinstance(eos_token_id, int):
+        eos_token_id = [eos_token_id]
+    for i, _ in enumerate(stop_ids):
+        last_index = -1
+        while len(tokens) + last_index + 1 > 0 and any(
+            token == tokens[last_index] for token in eos_token_id
+        ):
+            last_index -= 1
+        tokens = tokens[:last_index]
+        stop_ids[i] = stop_ids[i].to(tokens.device)
+        last_tokens = tokens[-len(stop_ids[i]) :]
+        if last_tokens.equal(stop_ids[i]):
+            tokens = tokens[: -len(stop_ids[i])]
+            break
+    return tokens

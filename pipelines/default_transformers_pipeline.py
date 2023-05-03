@@ -19,12 +19,9 @@ class DefaultTransformersPipeline(BasePipeline):
         tokenizer: PreTrainedTokenizer,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
-        stopping_tokens: List[Union[int, str]] = None,
         **kwargs
     ) -> None:
-        super().__init__(
-            model, tokenizer, prompt_format, device, stopping_tokens, **kwargs
-        )
+        super().__init__(model, tokenizer, prompt_format, device, **kwargs)
 
         self.pipeline = None
 
@@ -43,9 +40,9 @@ class DefaultTransformersPipeline(BasePipeline):
     def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[str]:
         if not self.pipeline:
             self.pipeline = self._get_transformers_pipeline()
-        default_kwargs = dict(stopping_criteria=self.stopping_criteria)
+        kwargs = self._add_default_generate_kwargs(kwargs)
         inputs = [str(input) for input in inputs]
-        return self.pipeline(inputs, **{**default_kwargs, **kwargs})
+        return self.pipeline(inputs, **kwargs)
 
     @classmethod
     def from_initializer(

@@ -8,6 +8,10 @@ from unittest.mock import patch
 import torch
 from filelock import FileLock
 
+from logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def set_transformers_cache(location: str):
     import huggingface_hub.constants
@@ -183,7 +187,7 @@ def reshard_checkpoint(model_name_or_path, dtype, path_to_save_in):
 def download_model(model_name: str, bucket_uri: str):
     from transformers.utils.hub import TRANSFORMERS_CACHE
 
-    print(f"Downloading {model_name} to '{TRANSFORMERS_CACHE}'")
+    logger.info(f"Downloading {model_name} from {bucket_uri} to '{TRANSFORMERS_CACHE}'")
     path = os.path.expanduser(
         os.path.join(TRANSFORMERS_CACHE, f"models--{model_name.replace('/', '--')}")
     )

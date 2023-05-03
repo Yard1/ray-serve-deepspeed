@@ -1,7 +1,7 @@
 # Based on https://huggingface.co/databricks/dolly-v2-12b/blob/main/instruct_pipeline.py
 
-import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -9,8 +9,6 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from ._base import BasePipeline
 from .utils import get_special_token_id
-
-logger = logging.getLogger(__name__)
 
 INSTRUCTION_KEY = "### Instruction:"
 RESPONSE_KEY = "### Response:"
@@ -41,7 +39,6 @@ class DollyV2Pipeline(BasePipeline):
         tokenizer: PreTrainedTokenizer,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
-        stopping_tokens: List[Union[int, str]] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -53,7 +50,6 @@ class DollyV2Pipeline(BasePipeline):
                 else PROMPT_FOR_GENERATION_FORMAT
             ),
             device=device,
-            stopping_tokens=stopping_tokens,
             **kwargs,
         )
 
@@ -68,7 +64,9 @@ class DollyV2Pipeline(BasePipeline):
     def preprocess(self, prompts: List[str], **generate_kwargs):
         prompt_text = self._construct_prompts(prompts)
         instruction_text = self._construct_prompts(prompts, prompt_format="")
-        inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True, **generate_kwargs)
+        inputs = self.tokenizer(
+            prompt_text, return_tensors="pt", padding=True, **generate_kwargs
+        ).to(self.model.device)
         inputs["prompt_text"] = prompt_text
         inputs["instruction_text"] = instruction_text
         return inputs
@@ -83,16 +81,14 @@ class DollyV2Pipeline(BasePipeline):
         else:
             in_b = input_ids.shape[0]
 
-        generate_kwargs = {
-            **dict(stopping_criteria=self.stopping_criteria),
-            **generate_kwargs,
-        }
+        st = time.monotonic()
         generated_sequence = self.model.generate(
-            input_ids=input_ids.to(self.model.device),
+            input_ids=input_ids,
             attention_mask=attention_mask,
             pad_token_id=self.tokenizer.pad_token_id,
             **generate_kwargs,
         )
+        et = time.monotonic() - st
 
         out_b = generated_sequence.shape[0]
         generated_sequence = generated_sequence.reshape(
@@ -104,6 +100,7 @@ class DollyV2Pipeline(BasePipeline):
             "generated_sequence": generated_sequence,
             "input_ids": input_ids,
             "instruction_text": instruction_text,
+            "generation_time": et,
         }
 
     def postprocess(
@@ -132,9 +129,9 @@ class DollyV2Pipeline(BasePipeline):
                     try:
                         response_pos = sequence.index(response_key_token_id)
                     except ValueError:
-                        logger.warn(
-                            f"Could not find response key {response_key_token_id} in: {sequence}"
-                        )
+                        # logger.warn(
+                        #    f"Could not find response key {response_key_token_id} in: {sequence}"
+                        # )
                         response_pos = None
 
                     if response_pos:
@@ -174,8 +171,8 @@ class DollyV2Pipeline(BasePipeline):
                         )
                         if m:
                             decoded = m.group(1).strip()
-                        else:
-                            logger.warn(f"Failed to find response in:\n{fully_decoded}")
+                        # else:
+                        # logger.warn(f"Failed to find response in:\n{fully_decoded}")
 
                 # If the full text is requested, then append the decoded text to the original instruction.
                 # This technically isn't the full text, as we format the instruction in the prompt the model has been
@@ -217,7 +214,7 @@ class DollyV2Pipeline(BasePipeline):
             except ValueError:
                 pass
 
-        forward_params = generate_kwargs
+        forward_params = self._add_default_generate_kwargs(generate_kwargs)
         postprocess_params = {
             "response_key_token_id": response_key_token_id,
             "end_key_token_id": end_key_token_id,
