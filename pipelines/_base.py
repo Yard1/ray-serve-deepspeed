@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from collections import UserDict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
-
+import warnings
+from transformers.pipelines.text_generation import ReturnType
 import torch
 from transformers import (
     PreTrainedModel,
@@ -83,16 +84,22 @@ class BasePipeline(ABC):
         self, stopping_tokens: List[int]
     ) -> "StoppingCriteriaList":
         class StopOnTokens(StoppingCriteria):
-            def __call__(
-                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-            ) -> bool:
+            def __init__(self) -> None:
+                super().__init__()
                 stop_ids = (
                     stopping_tokens
                     if stopping_tokens is not None
                     else [50278, 50279, 50277, 1, 0]
                 )
-                for stop_id in stop_ids:
-                    if input_ids[0][-1] == stop_id:
+                self.stop_ids = [torch.LongTensor([stop_id] if not isinstance(stop_id, list) else stop_id) for stop_id in stop_ids]
+
+
+            def __call__(
+                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+            ) -> bool:
+                for i, stop_id in enumerate(self.stop_ids):
+                    self.stop_ids[i] = self.stop_ids[i].to(input_ids.device)
+                    if input_ids[0][-len(self.stop_ids[i]):].equal(self.stop_ids[i]):
                         return True
                 return False
 
@@ -134,20 +141,15 @@ class BasePipeline(ABC):
     def postprocess(self, model_outputs, **generate_kwargs) -> List[str]:
         return model_outputs
 
-    def _set_default_forward_params(self, forward_params: dict) -> None:
-        forward_params.setdefault("do_sample", True)
-        forward_params.setdefault("top_p", 0.92)
-        forward_params.setdefault("top_k", 0)
-
     def _get_stopping_tokens(
         self, tokenizer: PreTrainedTokenizer, stopping_tokens: List[Union[str, int]]
     ) -> Set[int]:
         if not stopping_tokens:
             return None
-        return {
+        return [
             get_special_token_id(tokenizer, key) if isinstance(key, str) else key
             for key in stopping_tokens
-        }
+        ]
 
     @torch.inference_mode()
     def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[str]:
@@ -156,7 +158,6 @@ class BasePipeline(ABC):
             forward_params,
             postprocess_params,
         ) = self._sanitize_parameters(**kwargs)
-        self._set_default_forward_params(forward_params)
         model_inputs = self.preprocess(inputs, **preprocess_params)
         model_inputs = self._ensure_tensor_on_device(model_inputs, device=self.device)
         model_outputs = self.forward(model_inputs, **forward_params)
@@ -220,14 +221,71 @@ class BasePipeline(ABC):
             return inputs
 
     def _sanitize_parameters(
-        self, return_full_text: bool = None, **generate_kwargs
-    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        self,
+        return_full_text=None,
+        return_tensors=None,
+        return_text=None,
+        return_type=None,
+        clean_up_tokenization_spaces=None,
+        prefix=None,
+        handle_long_generation=None,
+        stop_sequence=None,
+        return_token_type_ids=None,
+        **generate_kwargs,
+    ):
         preprocess_params = {}
+        if prefix is not None:
+            preprocess_params["prefix"] = prefix
+        if return_token_type_ids is not None:
+            preprocess_params["return_token_type_ids"] = return_token_type_ids
+        if prefix:
+            prefix_inputs = self.tokenizer(
+                prefix, padding=False, add_special_tokens=False, return_tensors="pt"
+            )
+            prefix_length = prefix_inputs["input_ids"].shape[-1]
+
+            if "max_new_tokens" in generate_kwargs:
+                pass
+            elif "max_length" in generate_kwargs:
+                generate_kwargs["max_length"] += prefix_length
+            else:
+                generate_kwargs["max_length"] = self.model.config.max_length + prefix_length
+
+            if "min_length" in generate_kwargs:
+                generate_kwargs["min_length"] += prefix_length
+        if handle_long_generation is not None:
+            if handle_long_generation not in {"hole"}:
+                raise ValueError(
+                    f"{handle_long_generation} is not a valid value for `handle_long_generation` parameter expected"
+                    " [None, 'hole']"
+                )
+            preprocess_params["handle_long_generation"] = handle_long_generation
 
         forward_params = generate_kwargs
-        postprocess_params = {}
 
-        if return_full_text is not None:
-            postprocess_params["return_full_text"] = return_full_text
+        postprocess_params = {}
+        if return_full_text is not None and return_type is None:
+            if return_text is not None:
+                raise ValueError("`return_text` is mutually exclusive with `return_full_text`")
+            if return_tensors is not None:
+                raise ValueError("`return_full_text` is mutually exclusive with `return_tensors`")
+            return_type = ReturnType.FULL_TEXT if return_full_text else ReturnType.NEW_TEXT
+        if return_tensors is not None and return_type is None:
+            if return_text is not None:
+                raise ValueError("`return_text` is mutually exclusive with `return_tensors`")
+            return_type = ReturnType.TENSORS
+        if return_type is not None:
+            postprocess_params["return_type"] = return_type
+        if clean_up_tokenization_spaces is not None:
+            postprocess_params["clean_up_tokenization_spaces"] = clean_up_tokenization_spaces
+
+        if stop_sequence is not None:
+            stop_sequence_ids = self.tokenizer.encode(stop_sequence, add_special_tokens=False)
+            if len(stop_sequence_ids) > 1:
+                warnings.warn(
+                    "Stopping on a multiple token sequence is not yet supported on transformers. The first token of"
+                    " the stop sequence will be used as the stop sequence string in the interim."
+                )
+            generate_kwargs["eos_token_id"] = stop_sequence_ids[0]
 
         return preprocess_params, forward_params, postprocess_params

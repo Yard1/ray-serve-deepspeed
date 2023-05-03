@@ -50,7 +50,7 @@ def init_model(
 
     pipeline_name = llm_config.pipeline_cls
     pipeline = get_pipeline_cls_by_name(pipeline_name).from_initializer(
-        initializer, llm_config.name
+        initializer, llm_config.name, prompt_format=llm_config.prompt_format, stopping_tokens=llm_config.stopping_tokens, **llm_config.from_pretrained_kwargs
     )
 
     # Warmup
@@ -59,11 +59,12 @@ def init_model(
     # will raise CUDA errors if use_kernel=True.
     batch_size = max_batch_size or 1
     max_new_tokens = 256
+    generation_kwargs = {**llm_config.generation_kwargs, "max_new_tokens": max_new_tokens, } 
     resp1 = generate(
-        [WARMUP_PROMPT] * batch_size, pipeline, max_new_tokens=max_new_tokens
+        [WARMUP_PROMPT] * batch_size, pipeline, **generation_kwargs
     )
     assert len(resp1) == batch_size
-    generate([WARMUP_PROMPT], pipeline, max_new_tokens=max_new_tokens)
+    generate([WARMUP_PROMPT], pipeline, **generation_kwargs)
 
     print("Model succesfully initialized!")
 
@@ -149,7 +150,7 @@ class LLMPredictor(Predictor):
         ray.get(
             [
                 initialize_node_remote_pg.remote(
-                    llm_config.name, llm_config.mirror_bucket_uri, config.hf_home
+                    llm_config.name, llm_config.mirror_bucket_uri
                 )
                 for i in range(scaling_config.num_workers)
             ]

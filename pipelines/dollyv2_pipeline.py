@@ -68,7 +68,7 @@ class DollyV2Pipeline(BasePipeline):
     def preprocess(self, prompts: List[str], **generate_kwargs):
         prompt_text = self._construct_prompts(prompts)
         instruction_text = self._construct_prompts(prompts, prompt_format="")
-        inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True)
+        inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True, **generate_kwargs)
         inputs["prompt_text"] = prompt_text
         inputs["instruction_text"] = instruction_text
         return inputs

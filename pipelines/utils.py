@@ -14,7 +14,7 @@ def get_special_token_id(tokenizer: PreTrainedTokenizer, key: str) -> int:
         int: the token ID for the given key
     """
     token_ids = tokenizer.encode(key)
-    if len(token_ids) > 1:
+    if len(token_ids) > 2:
         raise ValueError(
             f"Expected only a single token for '{key}' but found {token_ids}"
         )

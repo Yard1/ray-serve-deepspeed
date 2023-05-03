@@ -11,7 +11,7 @@ from ray.serve.batching import _BatchQueue
 from ray.serve.context import get_global_client
 from ray.serve.deployment import ClassNode
 
-from models import Args, Prompt
+from models import Args, Prompt, DeepSpeed
 from predictor import LLMPredictor
 
 app = FastAPI()
@@ -85,6 +85,9 @@ class LLMDeployment(LLMPredictor):
             return True
 
         if old_args.model_config.dtype != new_args.model_config.dtype:
+            return True
+        
+        if old_args.model_config.max_batch_size != new_args.model_config.max_batch_size and isinstance(new_args.model_config.mode, DeepSpeed):
             return True
 
         # TODO: Allow those below
@@ -193,17 +196,18 @@ class LLMDeployment(LLMPredictor):
 @serve.ingress(app)
 class RouterDeployment:
     def __init__(self, models: Dict[str, ClassNode]) -> None:
-        self.models = models
+        self._models = models
+        print(self._models)
 
     @app.post("/query/{model}")
     async def query(self, model: str, prompt: Prompt):
         model = model.replace("--", "/")
         if model == "all":
-            keys = list(self.models.keys())
-            models = list(self.models.values())
+            keys = list(self._models.keys())
+            models = list(self._models.values())
         else:
             keys = [model]
-            models = [self.models[model]]
+            models = [self._models[model]]
         prompts = await asyncio.gather(
             *(
                 await asyncio.gather(
@@ -214,9 +218,15 @@ class RouterDeployment:
         print(prompts)
         return {key: prompt for key, prompt in zip(keys, prompts)}
 
+    @app.get("/models")
+    async def models(self) -> List[str]:
+        return list(self._models.keys())
+
 
 entrypoint = RouterDeployment.bind(
     {
+        "CarperAI/stable-vicuna-13b-delta": LLMDeployment.bind(),
+        "lmsys/vicuna-13b-delta-v1.1": LLMDeployment.bind(),
         "stabilityai/stablelm-tuned-alpha-7b": LLMDeployment.bind(),
         "databricks/dolly-v2-12b": LLMDeployment.bind(),
     }

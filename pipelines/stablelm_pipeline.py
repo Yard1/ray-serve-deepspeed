@@ -50,12 +50,15 @@ class StableLMPipeline(BasePipeline):
         instruction_text = self._construct_prompts(prompts, prompt_format="")
         if not self.tokenizer.pad_token or self.tokenizer.pad_token_id < 0:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True)
-        return {"inputs": inputs, "instruction_text": instruction_text}
+        inputs = self.tokenizer(prompt_text, return_tensors="pt", padding=True, **generate_kwargs)
+        if not generate_kwargs.get("return_token_type_ids", True):
+            inputs.pop("token_type_ids", None)
+        return {"inputs": inputs, "instruction_text": instruction_text, "prompt_text": prompt_text}
 
     def forward(self, model_inputs, **generate_kwargs):
         inputs = model_inputs["inputs"]
         instruction_text = model_inputs["instruction_text"]
+        prompt_text = model_inputs["prompt_text"]
         for t in inputs:
             if torch.is_tensor(inputs[t]):
                 inputs[t] = inputs[t].to(self.model.device)
@@ -67,19 +70,31 @@ class StableLMPipeline(BasePipeline):
         }
         generated_sequence = self.model.generate(**generate_kwargs)
         return {
+            "inputs": inputs,
             "generated_sequence": generated_sequence,
             "instruction_text": instruction_text,
+            "prompt_text": prompt_text,
         }
 
     def postprocess(self, model_outputs, **generate_kwargs) -> List[str]:
         tokens = model_outputs["generated_sequence"]
-        instruction_text = model_outputs["instruction_text"]
+        input_ids = model_outputs["inputs"]["input_ids"]
         decoded = []
-        for token_unwrapped in tokens:
-            decoded.append(
-                self.tokenizer.decode(token_unwrapped, skip_special_tokens=True)
-            )
-        return [
-            response[response.find(instruction_text) + len(instruction_text) :]
-            for response, instruction_text in zip(decoded, instruction_text)
-        ]
+        stop_ids = (
+            self.stopping_tokens
+            if self.stopping_tokens is not None
+            else self._default_stopping_tokens
+        )
+        stop_ids = [torch.LongTensor([stop_id] if not isinstance(stop_id, list) else stop_id) for stop_id in stop_ids]
+        for token_unwrapped, inputs_unwrapped in zip(tokens, input_ids):
+            tokens = token_unwrapped[len(inputs_unwrapped) :]
+            # remove dangling stop tokens
+            for i, stop_id in enumerate(stop_ids):
+                stop_ids[i] = stop_ids[i].to(tokens.device)
+                if tokens[-len(stop_ids[i]):].equal(stop_ids[i]):
+                    tokens = tokens[:-len(stop_ids[i])]
+                    break
+            text = self.tokenizer.decode(tokens, skip_special_tokens=True).strip()
+            decoded.append(text)
+
+        return decoded

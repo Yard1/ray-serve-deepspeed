@@ -30,11 +30,9 @@ def timeit(func):
 def initialize_node(
     model_name: Optional[str] = None,
     bucket_uri: Optional[str] = None,
-    hf_home: Optional[str] = "/nvme/cache",
 ):
     # Timeout in 10 minutes
-    lock = FileLock("/home/ray/default/nodeinit.lock", timeout=600)
-    with lock:
+    with FileLock("/home/ray/default/nodeinit.lock", timeout=600):
         shutil.rmtree("/home/ray/.cache/torch", ignore_errors=True)
         os.makedirs("/home/ray/.cache/torch/kernels", exist_ok=True)
         if Path("/nvme/.done").exists():
@@ -43,7 +41,8 @@ def initialize_node(
             print("Executing nvme initialization...")
             _initialize_nvme()
             subprocess.run("touch /nvme/.done", shell=True, check=True)
-        if model_name and bucket_uri:
+    if model_name and bucket_uri:
+        with FileLock(f"/home/ray/default/{model_name.replace('/', '--')}.lock", timeout=1200):
             download_model(model_name, bucket_uri)
             print("Done downloading the model")
 
