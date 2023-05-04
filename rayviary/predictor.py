@@ -71,10 +71,10 @@ def init_model(
         [WARMUP_PROMPT] * batch_size, pipeline, **llm_config.generation_kwargs
     )
     assert len(resp1) == batch_size
-    assert all(x.generated_text for x in resp1)
+    assert all(len(x.generated_text) > 1 for x in resp1)
     resp2 = generate([WARMUP_PROMPT], pipeline, **llm_config.generation_kwargs)
     assert len(resp2) == batch_size
-    assert all(x.generated_text for x in resp2)
+    assert all(len(x.generated_text) > 1 for x in resp2)
 
     logger.info(f"Model {llm_config.name} succesfully initialized!")
 
