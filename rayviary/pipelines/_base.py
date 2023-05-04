@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import torch
 from transformers import (
-    InfNanRemoveLogitsProcessor,
     LogitsProcessorList,
     PreTrainedModel,
     PreTrainedTokenizer,
@@ -13,12 +12,15 @@ from transformers import (
 )
 from transformers.pipelines.text_generation import ReturnType
 
+from ..logger import get_logger
 from ..models import Prompt, Response
-from .processors import StopOnTokensLogitsProcessor
+from .processors import StopOnEOS, StopOnTokensLogitsProcessor
 from .utils import get_special_token_id
 
 if TYPE_CHECKING:
     from ..initializers._base import LLMInitializer
+
+logger = get_logger(__name__)
 
 
 class BasePipeline(ABC):
@@ -36,6 +38,9 @@ class BasePipeline(ABC):
         self.tokenizer = tokenizer
         self.prompt_format: str = prompt_format or ""
         self.kwargs = kwargs
+
+        if self.tokenizer.model_max_length > 100000000000000001988462483865:
+            self.tokenizer.model_max_length = 2048
 
         if device is None:
             # `accelerate` device map
@@ -85,13 +90,11 @@ class BasePipeline(ABC):
     def _get_logits_processors(
         self, generate_kwargs: Dict[str, Any]
     ) -> LogitsProcessorList:
-        if getattr(self.model, "use_kernel", False):
-            return LogitsProcessorList([])
         lst = []
         stopping_tokens = self._default_stopping_tokens
         if generate_kwargs.get("stopping_tokens", None) is not None:
             stopping_tokens = self._get_stopping_tokens(
-                self.tokenizer, generate_kwargs.pop("stopping_tokens")
+                self.tokenizer, generate_kwargs["stopping_tokens"]
             )
         if stopping_tokens:
             lst.append(
@@ -160,6 +163,7 @@ class BasePipeline(ABC):
         ) = self._sanitize_parameters(**kwargs)
         model_inputs = self.preprocess(inputs, **preprocess_params)
         model_inputs = self._ensure_tensor_on_device(model_inputs, device=self.device)
+        logger.info(f"Forward params: {forward_params}")
         model_outputs = self.forward(model_inputs, **forward_params)
         model_outputs = self._ensure_tensor_on_device(
             model_outputs, device=torch.device("cpu")

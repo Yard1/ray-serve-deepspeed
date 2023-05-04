@@ -12,7 +12,7 @@ model_config:
   mode:
     type: DeepSpeed
   name: stabilityai/stablelm-tuned-alpha-7b
-  pipeline_cls: stablelm
+  pipeline_cls: default
   prompt_format: null
   stopping_tokens: null
 scaling_config:

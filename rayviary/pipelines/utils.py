@@ -1,5 +1,6 @@
 from typing import List, Union
 
+import torch
 from transformers import PreTrainedTokenizer
 
 
@@ -24,22 +25,17 @@ def get_special_token_id(tokenizer: PreTrainedTokenizer, key: str) -> int:
 
 
 def remove_dangling_stop_tokens(
-    tokens: List[int],
+    tokens: torch.LongTensor,
     stop_ids: List[Union[int, List[int]]],
-    eos_token_id: Union[int, List[int]],
 ) -> List[int]:
-    if isinstance(eos_token_id, int):
-        eos_token_id = [eos_token_id]
-    for i, _ in enumerate(stop_ids):
-        last_index = -1
-        while len(tokens) + last_index > 0 and any(
-            token == tokens[last_index] for token in eos_token_id
-        ):
-            last_index -= 1
-        tokens = tokens[:last_index]
-        stop_ids[i] = stop_ids[i].to(tokens.device)
-        last_tokens = tokens[-len(stop_ids[i]) :]
-        if last_tokens.equal(stop_ids[i]):
-            tokens = tokens[: -len(stop_ids[i])]
-            break
+    if not stop_ids:
+        return tokens
+    stop_ids: List[torch.LongTensor] = [
+        torch.LongTensor([stop_id] if not isinstance(stop_id, list) else stop_id)
+        for stop_id in stop_ids
+    ]
+    for stop_id_index, _ in enumerate(stop_ids):
+        stop_id = stop_ids[stop_id_index].to(tokens.device)
+        if len(tokens) > len(stop_id) and tokens[-len(stop_id) :].equal(stop_id):
+            tokens = tokens[: -len(stop_id)]
     return tokens

@@ -6,6 +6,7 @@ def readme():
         README = f.read()
     return README
 
+
 setup(
     name="rayviary",
     version="0.0.1",

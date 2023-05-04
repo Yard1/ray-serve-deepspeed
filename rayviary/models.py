@@ -134,7 +134,7 @@ class Framework(BaseModelExtended, extra=Extra.forbid):
 class DeepSpeed(Framework):
     type: Literal["DeepSpeed"]
     use_kernel: bool = False
-    max_tokens: int = 4096
+    max_tokens: int = 1024
 
 
 class DeviceMap(Framework):
@@ -159,6 +159,10 @@ class LLM(BaseModelExtended):
     from_pretrained_kwargs: Dict[str, Any] = {}
     stopping_tokens: Optional[List[Union[str, int, List[Union[str, int]]]]] = None
     mirror_bucket_uri: Optional[str] = None
+
+    @property
+    def all_generation_kwargs(self) -> Dict[str, Any]:
+        return {"stopping_tokens": self.stopping_tokens, **self.generation_kwargs}
 
     @validator("prompt_format")
     def check_prompt_format(cls, value):

@@ -2,7 +2,10 @@ import deepspeed
 import torch
 from transformers import AutoModelForCausalLM
 
+from ..logger import get_logger
 from ._base import LLMInitializer
+
+logger = get_logger(__name__)
 
 
 # TODO: Allow deepspeed kwargs
@@ -15,7 +18,7 @@ class DeepSpeedInitializer(LLMInitializer):
         max_tokens: int = 1024,
         use_kernel: bool = False,
         injection_policy=None,
-        **from_pretrained_kwargs
+        **from_pretrained_kwargs,
     ):
         super().__init__(
             device=device, world_size=world_size, dtype=dtype, **from_pretrained_kwargs
@@ -62,4 +65,5 @@ class DeepSpeedInitializer(LLMInitializer):
         model.use_kernel = self.use_kernel
         model.device = self.device
         model = model.to(self.device)
+        logger.info(f"DeepSpeed model: {model}")
         return model

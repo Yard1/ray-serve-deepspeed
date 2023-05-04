@@ -167,8 +167,7 @@ class LLMDeployment(LLMPredictor):
                 *[
                     worker.generate.remote(
                         data_ref,
-                        stopping_tokens=self.args.model_config.stopping_tokens,
-                        **self.args.model_config.generation_kwargs,
+                        **self.args.model_config.all_generation_kwargs,
                     )
                     for worker in self.prediction_workers
                 ]

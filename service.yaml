@@ -6,7 +6,7 @@ ray_serve_config:
   deployments:
 
   - name: LLMDeployment
-    max_concurrent_queries: 2
+    max_concurrent_queries: 4
     autoscaling_config:
       min_replicas: 1
       initial_replicas: 1
@@ -23,7 +23,7 @@ ray_serve_config:
     user_config:
       hf_home: /nvme/cache
       model_config:
-        max_batch_size: 2
+        max_batch_size: 4
         dtype: float16
         from_pretrained_kwargs: {}
         generation_kwargs:
@@ -38,7 +38,7 @@ ray_serve_config:
           type: DeepSpeed
           use_kernel: false
         name: CarperAI/stable-vicuna-13b-delta
-        pipeline_cls: stablelm
+        pipeline_cls: default
         prompt_format: "### Assistant: I am StableVicuna, a large language model created by CarperAI. I am here to chat!\n### Human: {instruction}\n### Assistant: "
         stopping_tokens: [835, [13, 2277]]
       scaling_config:
@@ -47,7 +47,7 @@ ray_serve_config:
         num_cpus_per_worker: 4
 
   - name: LLMDeployment_1
-    max_concurrent_queries: 2
+    max_concurrent_queries: 4
     autoscaling_config:
       min_replicas: 1
       initial_replicas: 1
@@ -64,7 +64,7 @@ ray_serve_config:
     user_config:
       hf_home: /nvme/cache
       model_config:
-        max_batch_size: 2
+        max_batch_size: 4
         dtype: float16
         from_pretrained_kwargs: {}
         generation_kwargs:
@@ -78,7 +78,7 @@ ray_serve_config:
           type: DeepSpeed
           use_kernel: false
         name: lmsys/vicuna-13b-delta-v1.1
-        pipeline_cls: stablelm
+        pipeline_cls: default
         prompt_format: "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: {instruction} ASSISTANT: "
         stopping_tokens: []
       scaling_config:
@@ -87,7 +87,7 @@ ray_serve_config:
         num_cpus_per_worker: 4
 
   - name: LLMDeployment_2
-    max_concurrent_queries: 20
+    max_concurrent_queries: 18
     autoscaling_config:
       min_replicas: 1
       initial_replicas: 1
@@ -104,29 +104,33 @@ ray_serve_config:
     user_config:
       hf_home: /nvme/cache
       model_config:
-        max_batch_size: 20
+        max_batch_size: 18
         dtype: float16
         from_pretrained_kwargs: {}
         generation_kwargs:
           do_sample: true
-          max_new_tokens: 256
+          max_new_tokens: 512
           min_new_tokens: 16
-          temperature: 0.7
+          do_sample: true
+          top_p: 0.95
+          top_k: 1000
+          temperature: 1.0
+          num_beams: 1
         mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
         mode:
           type: DeepSpeed
           use_kernel: true
         name: stabilityai/stablelm-tuned-alpha-7b
-        pipeline_cls: stablelm
+        pipeline_cls: default
         prompt_format: null
-        stopping_tokens: null
+        stopping_tokens: [50278, 50279, 50277, 1, 0]
       scaling_config:
         num_workers: 2
         num_gpus_per_worker: 1
         num_cpus_per_worker: 4
 
   - name: LLMDeployment_3
-    max_concurrent_queries: 2
+    max_concurrent_queries: 4
     autoscaling_config:
       min_replicas: 1
       initial_replicas: 1
@@ -143,7 +147,7 @@ ray_serve_config:
     user_config:
       hf_home: /nvme/cache
       model_config:
-        max_batch_size: 2
+        max_batch_size: 4
         dtype: float16
         from_pretrained_kwargs: {}
         generation_kwargs:
@@ -152,14 +156,15 @@ ray_serve_config:
           min_new_tokens: 16
           top_p: 0.92
           top_k: 0
+          temperature: 1.0
         mirror_bucket_uri: s3://large-dl-models-mirror/models--diegi97--dolly-v2-12b-sharded-bf16/main/
         mode:
           type: DeepSpeed
-          use_kernel: false
+          use_kernel: true
         name: diegi97/dolly-v2-12b-sharded-bf16
-        pipeline_cls: dollyv2
-        prompt_format: null
-        stopping_tokens: null
+        pipeline_cls: default
+        prompt_format: "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n### Instruction:\n{instruction}\n### Response:\n"
+        stopping_tokens: ["### Response:", "### End"]
       scaling_config:
         num_workers: 2
         num_gpus_per_worker: 1

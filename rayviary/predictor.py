@@ -70,8 +70,7 @@ def init_model(
     resp1 = generate(
         [WARMUP_PROMPT] * batch_size,
         pipeline,
-        stopping_tokens=llm_config.stopping_tokens,
-        **llm_config.generation_kwargs,
+        **llm_config.all_generation_kwargs,
     )
     logger.info(str(resp1))
     assert len(resp1) == batch_size
@@ -79,8 +78,7 @@ def init_model(
     resp2 = generate(
         [WARMUP_PROMPT],
         pipeline,
-        stopping_tokens=llm_config.stopping_tokens,
-        **llm_config.generation_kwargs,
+        **llm_config.all_generation_kwargs,
     )
     logger.info(str(resp2))
     assert len(resp2) == 1
@@ -118,7 +116,7 @@ class PredictionWorker(TorchDistributedWorker):
         local_rank: int,
         num_cpus_per_worker: int = 1,
     ):
-        get_logger(__name__, rank=int(os.environ["RANK"]), force=True)
+        get_logger(__name__, force=True)
 
         """Initialize model for inference"""
         os.environ["OMP_NUM_THREADS"] = str(num_cpus_per_worker)

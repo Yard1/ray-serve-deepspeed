@@ -4,22 +4,15 @@ from typing import List, Optional, Union
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
+from ..logger import get_logger
 from ..models import Response
 from ._base import BasePipeline
 from .utils import remove_dangling_stop_tokens
 
-SYSTEM_PROMPT = """<|SYSTEM|># StableLM Tuned (Alpha version)
-- StableLM is a helpful and harmless open-source AI language model developed by StabilityAI.
-- StableLM is excited to be able to help the user, but will refuse to do anything that could be considered harmful to the user.
-- StableLM is more than just an information source, StableLM is also able to write poetry, short stories, and make jokes.
-- StableLM will refuse to participate in anything that could harm a human.
-"""
+logger = get_logger(__name__)
 
 
-PROMPT_FOR_GENERATION_FORMAT = SYSTEM_PROMPT + "<|USER|>{instruction}<|ASSISTANT|>"
-
-
-class StableLMPipeline(BasePipeline):
+class DefaultPipeline(BasePipeline):
     def __init__(
         self,
         model: PreTrainedModel,
@@ -31,11 +24,7 @@ class StableLMPipeline(BasePipeline):
         super().__init__(
             model=model,
             tokenizer=tokenizer,
-            prompt_format=(
-                prompt_format
-                if prompt_format is not None
-                else PROMPT_FOR_GENERATION_FORMAT
-            ),
+            prompt_format=prompt_format,
             device=device,
             **kwargs,
         )
@@ -50,7 +39,7 @@ class StableLMPipeline(BasePipeline):
             prompts,
         )
         instruction_text = self._construct_prompts(prompts, prompt_format="")
-        if not self.tokenizer.pad_token or self.tokenizer.pad_token_id < 0:
+        if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         inputs = self.tokenizer(
             prompt_text, return_tensors="pt", padding=True, **generate_kwargs
@@ -127,21 +116,28 @@ class StableLMPipeline(BasePipeline):
         input_ids = model_outputs["inputs"]["input_ids"]
         decoded: List[Response] = []
         stopping_tokens = generate_kwargs.pop("stopping_tokens", None)
-        stop_ids = (
-            stopping_tokens
-            if stopping_tokens is not None
-            else self._default_stopping_tokens
+        stop_ids = self._get_stopping_tokens(
+            self.tokenizer,
+            (
+                stopping_tokens
+                if stopping_tokens is not None
+                else self._default_stopping_tokens
+            ),
         )
-        stop_ids = [
-            torch.LongTensor([stop_id] if not isinstance(stop_id, list) else stop_id)
-            for stop_id in stop_ids
-        ]
-        eos_token_ids = self.tokenizer.all_special_ids + [0]
+        if stop_ids and self.tokenizer.eos_token_id not in stop_ids:
+            stop_ids.append(self.tokenizer.eos_token_id)
         num_generated_tokens_batch = 0
         for token_unwrapped, inputs_unwrapped in zip(tokens, input_ids):
+            logger.info(
+                f"Unprocessed generated tokens: '{self.tokenizer.decode(token_unwrapped, skip_special_tokens=False).encode('unicode_escape').decode('utf-8')}'"
+            )
             tokens = token_unwrapped[len(inputs_unwrapped) :]
-            tokens = remove_dangling_stop_tokens(tokens, stop_ids, eos_token_ids)
-            text = self.tokenizer.decode(tokens, skip_special_tokens=True).strip()
+            tokens = remove_dangling_stop_tokens(tokens, stop_ids)
+            text = (
+                self.tokenizer.decode(tokens, skip_special_tokens=True)
+                .replace("\u200b", "")
+                .strip()
+            )
             response = Response(generated_text=text, num_generated_tokens=len(tokens))
             num_generated_tokens_batch += len(tokens)
             decoded.append(response)

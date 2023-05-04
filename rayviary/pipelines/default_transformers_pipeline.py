@@ -4,11 +4,14 @@ import torch
 from transformers import Pipeline as TransformersPipeline
 from transformers import PreTrainedModel, PreTrainedTokenizer, pipeline
 
+from ..logger import get_logger
 from ..models import Prompt, Response
 from ._base import BasePipeline
 
 if TYPE_CHECKING:
     from ..initializers._base import LLMInitializer
+
+logger = get_logger(__name__)
 
 
 class DefaultTransformersPipeline(BasePipeline):
@@ -18,7 +21,7 @@ class DefaultTransformersPipeline(BasePipeline):
         tokenizer: PreTrainedTokenizer,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(model, tokenizer, prompt_format, device, **kwargs)
 
@@ -41,6 +44,7 @@ class DefaultTransformersPipeline(BasePipeline):
             self.pipeline = self._get_transformers_pipeline()
         kwargs = self._add_default_generate_kwargs(kwargs)
         inputs = [str(input) for input in inputs]
+        logger.info(f"Pipeline params: {kwargs}")
         return [
             Response(generated_text=text) for text in self.pipeline(inputs, **kwargs)
         ]
@@ -53,7 +57,7 @@ class DefaultTransformersPipeline(BasePipeline):
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
         stopping_tokens: List[Union[int, str]] = None,
-        **kwargs
+        **kwargs,
     ) -> "DefaultTransformersPipeline":
         default_kwargs = dict(
             model=model_name,
@@ -61,7 +65,7 @@ class DefaultTransformersPipeline(BasePipeline):
         )
         transformers_pipe = pipeline(
             **{**default_kwargs, **kwargs},
-            model_kwargs=initializer.get_model_from_pretrained_kwargs()
+            model_kwargs=initializer.get_model_from_pretrained_kwargs(),
         )
         transformers_pipe.model = initializer.postprocess_model(transformers_pipe.model)
         pipe = cls(
@@ -70,7 +74,7 @@ class DefaultTransformersPipeline(BasePipeline):
             prompt_format=prompt_format,
             device=device,
             stopping_tokens=stopping_tokens,
-            **kwargs
+            **kwargs,
         )
         pipe.pipeline = transformers_pipe
         transformers_pipe.device = pipe.device
