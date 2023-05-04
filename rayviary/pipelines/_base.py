@@ -85,6 +85,8 @@ class BasePipeline(ABC):
     def _get_logits_processors(
         self, generate_kwargs: Dict[str, Any]
     ) -> LogitsProcessorList:
+        if getattr(self.model, "use_kernel", False):
+            return LogitsProcessorList([])
         lst = []
         stopping_tokens = self._default_stopping_tokens
         if generate_kwargs.get("stopping_tokens", None) is not None:
@@ -98,8 +100,8 @@ class BasePipeline(ABC):
                 )
             )
 
-        if getattr(self.model, "use_kernel", False):
-            lst.append(InfNanRemoveLogitsProcessor())
+        # if getattr(self.model, "use_kernel", False):
+        #     lst.append(InfNanRemoveLogitsProcessor())
 
         return LogitsProcessorList(lst)
 
@@ -225,24 +227,28 @@ class BasePipeline(ABC):
         self, generate_kwargs: Dict[str, Any]
     ) -> Dict[str, Any]:
         stopping_criteria = self._get_stopping_criteria(generate_kwargs)
-        if generate_kwargs.get("stopping_criteria", None):
-            generate_kwargs["stopping_criteria"].extend(stopping_criteria)
-            generate_kwargs["stopping_criteria"] = StoppingCriteriaList(
-                generate_kwargs["stopping_criteria"]
-            )
-        else:
-            generate_kwargs["stopping_criteria"] = StoppingCriteriaList(
-                stopping_criteria
-            )
+        if stopping_criteria:
+            if generate_kwargs.get("stopping_criteria", None):
+                generate_kwargs["stopping_criteria"].extend(stopping_criteria)
+                generate_kwargs["stopping_criteria"] = StoppingCriteriaList(
+                    generate_kwargs["stopping_criteria"]
+                )
+            else:
+                generate_kwargs["stopping_criteria"] = StoppingCriteriaList(
+                    stopping_criteria
+                )
 
         logits_processor = self._get_logits_processors(generate_kwargs)
-        if generate_kwargs.get("logits_processor", None):
-            generate_kwargs["logits_processor"].extend(logits_processor)
-            generate_kwargs["logits_processor"] = LogitsProcessorList(
-                generate_kwargs["logits_processor"]
-            )
-        else:
-            generate_kwargs["logits_processor"] = LogitsProcessorList(logits_processor)
+        if logits_processor:
+            if generate_kwargs.get("logits_processor", None):
+                generate_kwargs["logits_processor"].extend(logits_processor)
+                generate_kwargs["logits_processor"] = LogitsProcessorList(
+                    generate_kwargs["logits_processor"]
+                )
+            else:
+                generate_kwargs["logits_processor"] = LogitsProcessorList(
+                    logits_processor
+                )
 
         generate_kwargs.pop("stopping_tokens", None)
         return generate_kwargs

@@ -32,7 +32,7 @@ def remove_dangling_stop_tokens(
         eos_token_id = [eos_token_id]
     for i, _ in enumerate(stop_ids):
         last_index = -1
-        while len(tokens) + last_index + 1 > 0 and any(
+        while len(tokens) + last_index > 0 and any(
             token == tokens[last_index] for token in eos_token_id
         ):
             last_index -= 1
