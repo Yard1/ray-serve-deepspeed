@@ -22,7 +22,7 @@ class BaseModelExtended(BaseModel):
         exclude_unset: bool = False,
         exclude_defaults: bool = False,
         exclude_none: bool = False,
-        **kwargs
+        **kwargs,
     ):
         return yaml.dump(
             self.dict(
@@ -35,8 +35,32 @@ class BaseModelExtended(BaseModel):
                 exclude_none=exclude_none,
             ),
             stream=stream,
-            **kwargs
+            **kwargs,
         )
+
+
+class ComputedPropertyMixin:
+    # Replace with pydantic.computed_field once it's available
+    @classmethod
+    def get_properties(cls):
+        return [prop for prop in dir(cls) if isinstance(getattr(cls, prop), property)]
+
+    def dict(self, *args, **kwargs):
+        self.__dict__.update(
+            {prop: getattr(self, prop) for prop in self.get_properties()}
+        )
+        return super().dict(*args, **kwargs)
+
+    def json(
+        self,
+        *args,
+        **kwargs,
+    ) -> str:
+        self.__dict__.update(
+            {prop: getattr(self, prop) for prop in self.get_properties()}
+        )
+
+        return super().json(*args, **kwargs)
 
 
 class Prompt(BaseModelExtended):
@@ -47,9 +71,10 @@ class Prompt(BaseModelExtended):
         return self.prompt
 
 
-class Response(BaseModelExtended):
-    text: str
+class Response(ComputedPropertyMixin, BaseModelExtended):
+    generated_text: str
     num_generated_tokens: Optional[int] = None
+    num_generated_tokens_batch: Optional[int] = None
     preprocessing_time: Optional[float] = None
     generation_time: Optional[float] = None
     postprocessing_time: Optional[float] = None
@@ -66,7 +91,7 @@ class Response(BaseModelExtended):
             return None
 
     @property
-    def time_per_token(self) -> Optional[float]:
+    def total_time_per_token(self) -> Optional[float]:
         try:
             return self.total_time / self.num_generated_tokens
         except Exception:
@@ -79,8 +104,22 @@ class Response(BaseModelExtended):
         except Exception:
             return None
 
+    @property
+    def total_time_per_token_batch(self) -> Optional[float]:
+        try:
+            return self.total_time / self.num_generated_tokens_batch
+        except Exception:
+            return None
+
+    @property
+    def generation_time_per_token_batch(self) -> Optional[float]:
+        try:
+            return self.generation_time / self.num_generated_tokens_batch
+        except Exception:
+            return None
+
     def __str__(self) -> str:
-        return self.text
+        return self.generated_text
 
 
 class Framework(BaseModelExtended, extra=Extra.forbid):

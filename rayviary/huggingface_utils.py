@@ -8,7 +8,7 @@ from unittest.mock import patch
 import torch
 from filelock import FileLock
 
-from logger import get_logger
+from rayviary.logger import get_logger
 
 logger = get_logger(__name__)
 

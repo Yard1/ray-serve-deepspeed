@@ -29,3 +29,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     pprint(send_query(args.prompt, args.host))
+
+text = "Can you recommend some books to read?"
+resp = requests.post(
+    "https://aviary-v0-jrvwy.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata-staging.com/query/CarperAI--stable-vicuna-13b-delta",
+    headers={"Authorization": "Bearer LBGTsD3WEJiapmMnEOnLBt1IfneZIWoeeOGMjgAfpiI"},
+    json={"prompt": text},
+)

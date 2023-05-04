@@ -1,6 +1,6 @@
 # This file was generated using the `serve build` command on Ray v3.0.0.dev0.
 
-import_path: app:entrypoint
+import_path: rayviary.app:entrypoint
 
 runtime_env: 
   env_vars:

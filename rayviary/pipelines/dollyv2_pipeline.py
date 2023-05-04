@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
+from ..models import Response
 from ._base import BasePipeline
 from .utils import get_special_token_id
 
@@ -62,16 +63,20 @@ class DollyV2Pipeline(BasePipeline):
         return self.__default_stopping_tokens
 
     def preprocess(self, prompts: List[str], **generate_kwargs):
+        st = time.monotonic()
         prompt_text = self._construct_prompts(prompts)
         instruction_text = self._construct_prompts(prompts, prompt_format="")
         inputs = self.tokenizer(
             prompt_text, return_tensors="pt", padding=True, **generate_kwargs
         ).to(self.model.device)
+        et = time.monotonic() - st
         inputs["prompt_text"] = prompt_text
         inputs["instruction_text"] = instruction_text
+        inputs["preprocessing_time"] = et
         return inputs
 
     def forward(self, model_inputs, **generate_kwargs):
+        st = time.monotonic()
         input_ids = model_inputs["input_ids"]
         attention_mask = model_inputs.get("attention_mask", None)
         if input_ids.shape[1] == 0:
@@ -81,26 +86,24 @@ class DollyV2Pipeline(BasePipeline):
         else:
             in_b = input_ids.shape[0]
 
-        st = time.monotonic()
         generated_sequence = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
             pad_token_id=self.tokenizer.pad_token_id,
             **generate_kwargs,
         )
-        et = time.monotonic() - st
 
         out_b = generated_sequence.shape[0]
         generated_sequence = generated_sequence.reshape(
             in_b, out_b // in_b, *generated_sequence.shape[1:]
         )
-
-        instruction_text = model_inputs.pop("instruction_text")
+        et = time.monotonic() - st
         return {
             "generated_sequence": generated_sequence,
             "input_ids": input_ids,
-            "instruction_text": instruction_text,
+            "instruction_text": model_inputs["instruction_text"],
             "generation_time": et,
+            "preprocessing_time": model_inputs["preprocessing_time"],
         }
 
     def postprocess(
@@ -109,15 +112,18 @@ class DollyV2Pipeline(BasePipeline):
         response_key_token_id: int,
         end_key_token_id: int,
         return_full_text: bool = False,
-    ) -> List[str]:
+    ) -> List[Response]:
+        st = time.monotonic()
         generated_sequences = model_outputs["generated_sequence"]
         instruction_texts = model_outputs["instruction_text"]
 
-        records = []
+        records: List[Response] = []
+        num_generated_tokens_batch = 0
 
         for generated_sequence in generated_sequences:
             instruction_text = instruction_texts[0]
             generated_sequence: List[List[int]] = generated_sequence.numpy().tolist()
+            num_generated_tokens = None
             for sequence in generated_sequence:
                 # The response will be set to this variable if we can identify it.
                 decoded = None
@@ -147,6 +153,8 @@ class DollyV2Pipeline(BasePipeline):
                         decoded = self.tokenizer.decode(
                             sequence[response_pos + 1 : end_pos]
                         ).strip()
+                        num_generated_tokens = len(sequence[response_pos + 1 : end_pos])
+                        num_generated_tokens_batch += num_generated_tokens
 
                 if not decoded:
                     # Otherwise we'll decode everything and use a regex to find the response and end.
@@ -180,7 +188,19 @@ class DollyV2Pipeline(BasePipeline):
                 if return_full_text:
                     decoded = f"{instruction_text}\n{decoded}"
 
-                records.append(decoded)
+                records.append(
+                    Response(
+                        generated_text=decoded,
+                        num_generated_tokens=num_generated_tokens,
+                    )
+                )
+        et = time.monotonic() - st
+
+        for response in records:
+            response.num_generated_tokens_batch = num_generated_tokens_batch or None
+            response.preprocessing_time = model_outputs["preprocessing_time"]
+            response.generation_time = model_outputs["generation_time"]
+            response.postprocessing_time = et
 
         return records
 

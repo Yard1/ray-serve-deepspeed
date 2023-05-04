@@ -4,8 +4,7 @@ import torch
 from transformers import Pipeline as TransformersPipeline
 from transformers import PreTrainedModel, PreTrainedTokenizer, pipeline
 
-from models import Prompt
-
+from ..models import Prompt, Response
 from ._base import BasePipeline
 
 if TYPE_CHECKING:
@@ -37,12 +36,14 @@ class DefaultTransformersPipeline(BasePipeline):
         return transformers_pipe
 
     @torch.inference_mode()
-    def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[str]:
+    def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[Response]:
         if not self.pipeline:
             self.pipeline = self._get_transformers_pipeline()
         kwargs = self._add_default_generate_kwargs(kwargs)
         inputs = [str(input) for input in inputs]
-        return self.pipeline(inputs, **kwargs)
+        return [
+            Response(generated_text=text) for text in self.pipeline(inputs, **kwargs)
+        ]
 
     @classmethod
     def from_initializer(

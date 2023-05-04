@@ -1,10 +1,6 @@
 # This file was generated using the `serve build` command on Ray v3.0.0.dev0.
 
-import_path: app:entrypoint
-
-runtime_env: 
-  env_vars:
-    HF_HOME: "/nvme/cache"
+import_path: rayviary.app:entrypoint
 
 host: 0.0.0.0
 
@@ -114,7 +110,7 @@ deployments:
       from_pretrained_kwargs: {}
       generation_kwargs:
         do_sample: true
-        max_new_tokens: 512
+        max_new_tokens: 256
         temperature: 0.7
       mirror_bucket_uri: s3://large-dl-models-mirror/models--stabilityai--stablelm-tuned-alpha-7b/main/
       mode:

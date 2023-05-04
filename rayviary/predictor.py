@@ -1,5 +1,4 @@
 import gc
-import logging
 import os
 from typing import List, Optional
 
@@ -16,15 +15,13 @@ from ray.air.util.torch_dist import (
 from ray.train.predictor import Predictor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from initializers import get_initializer_cls_by_name
-from logger import get_logger
-from models import LLM, Prompt
-from pipelines import get_pipeline_cls_by_name
-from utils import initialize_node, timeit
+from rayviary.initializers import get_initializer_cls_by_name
+from rayviary.logger import get_logger
+from rayviary.models import LLM, Args, Prompt, Response
+from rayviary.pipelines import get_pipeline_cls_by_name
+from rayviary.utils import initialize_node, timeit
 
 WARMUP_PROMPT = "Write a short story."
-
-initialize_node_remote = ray.remote(initialize_node)
 
 logger = get_logger(__name__)
 
@@ -38,6 +35,7 @@ def init_model(
 ):
     """Initialize the model"""
     logger.info(f"Initializing model {llm_config.name}...")
+    initialize_node(llm_config.name, llm_config.mirror_bucket_uri)
 
     # Lazy import so that the new cache location is used
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -72,7 +70,10 @@ def init_model(
         [WARMUP_PROMPT] * batch_size, pipeline, **llm_config.generation_kwargs
     )
     assert len(resp1) == batch_size
-    generate([WARMUP_PROMPT], pipeline, **llm_config.generation_kwargs)
+    assert all(x.generated_text for x in resp1)
+    resp2 = generate([WARMUP_PROMPT], pipeline, **llm_config.generation_kwargs)
+    assert len(resp2) == batch_size
+    assert all(x.generated_text for x in resp2)
 
     logger.info(f"Model {llm_config.name} succesfully initialized!")
 
@@ -80,7 +81,7 @@ def init_model(
 
 
 @timeit
-def generate(prompts: List[Prompt], pipeline, **generate_kwargs) -> List[str]:
+def generate(prompts: List[Prompt], pipeline, **generate_kwargs) -> List[Response]:
     """Generate predictions using a Pipeline"""
     outputs = pipeline(
         prompts,
@@ -143,7 +144,7 @@ class LLMPredictor(Predictor):
         self.prediction_workers = None
         gc.collect()
 
-        config = self.checkpoint.to_dict()["config"]
+        config: Args = self.checkpoint.to_dict()["config"]
         llm_config = config.model_config
 
         # Start a placement group for the workers.
@@ -158,15 +159,6 @@ class LLMPredictor(Predictor):
         )
         prediction_worker_cls = PredictionWorker.options(
             **scaling_options, runtime_env={"env_vars": {"HF_HOME": config.hf_home}}
-        )
-        initialize_node_remote_pg = initialize_node_remote.options(**scaling_options)
-        ray.get(
-            [
-                initialize_node_remote_pg.remote(
-                    llm_config.name, llm_config.mirror_bucket_uri
-                )
-                for i in range(scaling_config.num_workers)
-            ]
         )
 
         # Create the prediction workers.

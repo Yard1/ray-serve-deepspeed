@@ -10,9 +10,9 @@ from ray.experimental.state.api import list_actors
 from ray.serve.batching import _BatchQueue
 from ray.serve.deployment import ClassNode
 
-from logger import get_logger
-from models import Args, DeepSpeed, Prompt
-from predictor import LLMPredictor
+from rayviary.logger import get_logger
+from rayviary.models import Args, DeepSpeed, Prompt
+from rayviary.predictor import LLMPredictor
 
 logger = get_logger(__name__)
 

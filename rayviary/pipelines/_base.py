@@ -13,8 +13,7 @@ from transformers import (
 )
 from transformers.pipelines.text_generation import ReturnType
 
-from models import Prompt
-
+from ..models import Prompt, Response
 from .processors import StopOnTokensLogitsProcessor
 from .utils import get_special_token_id
 
@@ -137,7 +136,7 @@ class BasePipeline(ABC):
     def forward(self, model_inputs, **generate_kwargs):
         raise NotImplementedError
 
-    def postprocess(self, model_outputs, **generate_kwargs) -> List[str]:
+    def postprocess(self, model_outputs, **generate_kwargs) -> List[Response]:
         return model_outputs
 
     def _get_stopping_tokens(
@@ -151,7 +150,7 @@ class BasePipeline(ABC):
         ]
 
     @torch.inference_mode()
-    def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[str]:
+    def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[Response]:
         (
             preprocess_params,
             forward_params,
@@ -165,7 +164,10 @@ class BasePipeline(ABC):
         )
 
         outputs = self.postprocess(model_outputs, **postprocess_params)
-        return outputs
+        return [
+            Response(generated_text=text) if isinstance(text, str) else text
+            for text in outputs
+        ]
 
     def ensure_tensor_on_device(self, **inputs):
         """

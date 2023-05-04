@@ -4,6 +4,7 @@ from typing import List, Optional, Union
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
+from ..models import Response
 from ._base import BasePipeline
 from .utils import remove_dangling_stop_tokens
 
@@ -120,11 +121,11 @@ class StableLMPipeline(BasePipeline):
         postprocess_params["stopping_tokens"] = stopping_tokens
         return preprocess_params, forward_params, postprocess_params
 
-    def postprocess(self, model_outputs, **generate_kwargs) -> List[str]:
+    def postprocess(self, model_outputs, **generate_kwargs) -> List[Response]:
         st = time.monotonic()
         tokens = model_outputs["generated_sequence"]
         input_ids = model_outputs["inputs"]["input_ids"]
-        decoded = []
+        decoded: List[Response] = []
         stopping_tokens = generate_kwargs.pop("stopping_tokens", None)
         stop_ids = (
             stopping_tokens
@@ -136,10 +137,18 @@ class StableLMPipeline(BasePipeline):
             for stop_id in stop_ids
         ]
         eos_token_ids = self.tokenizer.all_special_ids + [0]
+        num_generated_tokens_batch = 0
         for token_unwrapped, inputs_unwrapped in zip(tokens, input_ids):
             tokens = token_unwrapped[len(inputs_unwrapped) :]
             tokens = remove_dangling_stop_tokens(tokens, stop_ids, eos_token_ids)
             text = self.tokenizer.decode(tokens, skip_special_tokens=True).strip()
-            decoded.append(text)
+            response = Response(generated_text=text, num_generated_tokens=len(tokens))
+            num_generated_tokens_batch += len(tokens)
+            decoded.append(response)
         et = time.monotonic() - st
+        for response in decoded:
+            response.num_generated_tokens_batch = num_generated_tokens_batch
+            response.preprocessing_time = model_outputs["preprocessing_time"]
+            response.generation_time = model_outputs["generation_time"]
+            response.postprocessing_time = et
         return decoded
