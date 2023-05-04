@@ -23,6 +23,8 @@ from rayviary.utils import initialize_node, timeit
 
 WARMUP_PROMPT = "Write a short story."
 
+initialize_node_remote = ray.remote(initialize_node)
+
 logger = get_logger(__name__)
 
 
@@ -35,7 +37,6 @@ def init_model(
 ):
     """Initialize the model"""
     logger.info(f"Initializing model {llm_config.name}...")
-    initialize_node(llm_config.name, llm_config.mirror_bucket_uri)
 
     # Lazy import so that the new cache location is used
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -157,8 +158,20 @@ class LLMPredictor(Predictor):
                 placement_group=self.pg, placement_group_capture_child_tasks=True
             ),
         )
+        runtime_env = {"env_vars": {"HF_HOME": config.hf_home}}
         prediction_worker_cls = PredictionWorker.options(
-            **scaling_options, runtime_env={"env_vars": {"HF_HOME": config.hf_home}}
+            **scaling_options, runtime_env=runtime_env
+        )
+        initialize_node_remote_pg = initialize_node_remote.options(
+            **scaling_options, runtime_env=runtime_env
+        )
+        ray.get(
+            [
+                initialize_node_remote_pg.remote(
+                    llm_config.name, llm_config.mirror_bucket_uri
+                )
+                for i in range(scaling_config.num_workers)
+            ]
         )
 
         # Create the prediction workers.
