@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple
 
@@ -16,7 +17,7 @@ class LLMInitializer(ABC):
         device: torch.device,
         world_size: int,
         dtype: torch.dtype = torch.float16,
-        **kwargs
+        **kwargs,
     ):
         self.device = device
         self.world_size = world_size
@@ -33,6 +34,15 @@ class LLMInitializer(ABC):
         return self.postprocess_model(model), self.postprocess_tokenizer(tokenizer)
 
     def load_model(self, model_name: str) -> "PreTrainedModel":
+        from transformers.utils.hub import TRANSFORMERS_CACHE
+
+        path = os.path.expanduser(
+            os.path.join(TRANSFORMERS_CACHE, f"models--{model_name.replace('/', '--')}")
+        )
+        if os.path.exists(path):
+            with open(os.path.join(path, "refs", "main"), "r") as f:
+                snapshot_hash = f.read().strip()
+            model_name = os.path.join(path, "snapshots", snapshot_hash)
         model = AutoModelForCausalLM.from_pretrained(
             model_name, **self.get_model_from_pretrained_kwargs()
         )

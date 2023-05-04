@@ -34,8 +34,14 @@ def remove_dangling_stop_tokens(
         torch.LongTensor([stop_id] if not isinstance(stop_id, list) else stop_id)
         for stop_id in stop_ids
     ]
-    for stop_id_index, _ in enumerate(stop_ids):
-        stop_id = stop_ids[stop_id_index].to(tokens.device)
-        if len(tokens) > len(stop_id) and tokens[-len(stop_id) :].equal(stop_id):
-            tokens = tokens[: -len(stop_id)]
+    last_token_is_stop_token = True
+    while last_token_is_stop_token:
+        for stop_id_index, _ in enumerate(stop_ids):
+            stop_id = stop_ids[stop_id_index].to(tokens.device)
+            if len(tokens) > len(stop_id) and tokens[-len(stop_id) :].equal(stop_id):
+                tokens = tokens[: -len(stop_id)]
+                last_token_is_stop_token = True
+                break
+            else:
+                last_token_is_stop_token = False
     return tokens
