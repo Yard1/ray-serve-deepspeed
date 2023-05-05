@@ -237,6 +237,7 @@ entrypoint = RouterDeployment.bind(
         "lmsys/vicuna-13b-delta-v1.1": LLMDeployment.bind(),
         "stabilityai/stablelm-tuned-alpha-7b": LLMDeployment.bind(),
         "databricks/dolly-v2-12b": LLMDeployment.bind(),
+        "mosaicml/mpt-7b-chat": LLMDeployment.bind(),
     }
 )
 

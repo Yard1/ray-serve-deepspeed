@@ -3,6 +3,7 @@ from typing import Type
 from ._base import LLMInitializer
 from .deepspeed import DeepSpeedInitializer
 from .device_map import DeviceMapInitializer
+from .single_device import SingleDeviceInitializer
 
 
 def get_initializer_cls_by_name(name: str) -> Type[LLMInitializer]:
@@ -18,4 +19,5 @@ __all__ = [
     "get_initializer_cls_by_name",
     "DeepSpeedInitializer",
     "DeviceMapInitializer",
+    "SingleDeviceInitializer",
 ]

@@ -26,7 +26,7 @@ class LLMInitializer(ABC):
 
     @abstractmethod
     def get_model_from_pretrained_kwargs(self) -> Dict[str, Any]:
-        pass
+        return self.kwargs
 
     def load(self, model_name) -> Tuple["PreTrainedModel", "PreTrainedTokenizer"]:
         model = self.load_model(model_name)
@@ -42,7 +42,9 @@ class LLMInitializer(ABC):
         if os.path.exists(path):
             with open(os.path.join(path, "refs", "main"), "r") as f:
                 snapshot_hash = f.read().strip()
-            model_name = os.path.join(path, "snapshots", snapshot_hash)
+            if os.path.exists(os.path.join(path, "snapshots", snapshot_hash, "hash")):
+                model_name = os.path.join(path, "snapshots", snapshot_hash)
+
         model = AutoModelForCausalLM.from_pretrained(
             model_name, **self.get_model_from_pretrained_kwargs()
         )

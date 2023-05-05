@@ -36,6 +36,7 @@ class StopOnTokensLogitsProcessor(LogitsProcessor):
         ]
         self._stopped_batches = set()
         self._iters = warmup_iters
+        self._nulled_batch = None
 
     def __call__(
         self, input_ids: torch.LongTensor, scores: torch.FloatTensor
@@ -47,13 +48,15 @@ class StopOnTokensLogitsProcessor(LogitsProcessor):
             return scores
         for batch_index, batch in enumerate(input_ids):
             if batch_index not in self._stopped_batches:
-                for stop_id_index, _ in enumerate(self.stop_ids):
-                    stop_id = self.stop_ids[stop_id_index].to(batch.device)
+                for stop_id in self.stop_ids:
                     if len(batch) > len(stop_id) and batch[-len(stop_id) :].equal(
-                        stop_id
+                        stop_id.to(batch.device)
                     ):
                         self._stopped_batches.add(batch_index)
             if batch_index in self._stopped_batches:
-                scores[batch_index, :] = -float("inf")
-                scores[batch_index, self.eos_token_id] = 0
+                if self._nulled_batch is None:
+                    scores[batch_index, :] = -float("inf")
+                    scores[batch_index, self.eos_token_id] = 0
+                    self._nulled_batch = scores[batch_index]
+                scores[batch_index] = self._nulled_batch
         return scores

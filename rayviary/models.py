@@ -139,12 +139,18 @@ class DeepSpeed(Framework):
 
 class DeviceMap(Framework):
     type: Literal["DeviceMap"]
-    device_map: str = "auto"
+    device_map: Optional[str] = "auto"
+
+
+class SingleDevice(Framework):
+    type: Literal["SingleDevice"]
 
 
 class LLM(BaseModelExtended):
     name: str
-    mode: Annotated[Union[DeviceMap, DeepSpeed], Field(discriminator="type")]
+    mode: Annotated[
+        Union[DeviceMap, DeepSpeed, SingleDevice], Field(discriminator="type")
+    ]
     pipeline_cls: str
     prompt_format: Optional[str] = None
     max_batch_size: int = 1

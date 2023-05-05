@@ -50,7 +50,10 @@ def init_model(
         device=device,
         world_size=world_size,
         dtype=dtype,
-        **llm_config.mode.dict(exclude={"type"}),
+        **{
+            **llm_config.mode.dict(exclude={"type"}),
+            **llm_config.from_pretrained_kwargs,
+        },
     )
 
     pipeline_name = llm_config.pipeline_cls
@@ -58,7 +61,6 @@ def init_model(
         initializer,
         llm_config.name,
         prompt_format=llm_config.prompt_format,
-        **llm_config.from_pretrained_kwargs,
     )
 
     # Warmup
@@ -166,7 +168,10 @@ class LLMPredictor(Predictor):
                 placement_group=self.pg, placement_group_capture_child_tasks=True
             ),
         )
-        runtime_env = {"env_vars": {"HF_HOME": config.hf_home}}
+        runtime_env = {
+            "env_vars": {"HF_HOME": config.hf_home},
+            "pip": ["flash-attn==1.0.3.post0", "triton==2.0.0.dev20221202"],
+        }
         prediction_worker_cls = PredictionWorker.options(
             **scaling_options, runtime_env=runtime_env
         )
