@@ -1,11 +1,12 @@
 import warnings
 from abc import ABC, abstractmethod
 from collections import UserDict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import torch
 from transformers import (
     LogitsProcessorList,
+    MinNewTokensLengthLogitsProcessor,
     PreTrainedModel,
     PreTrainedTokenizer,
     StoppingCriteriaList,
@@ -14,7 +15,7 @@ from transformers.pipelines.text_generation import ReturnType
 
 from ..logger import get_logger
 from ..models import Prompt, Response
-from .processors import StopOnEOS, StopOnTokensLogitsProcessor
+from .processors import StopOnTokensLogitsProcessor
 from .utils import get_special_token_id
 
 if TYPE_CHECKING:
@@ -38,9 +39,6 @@ class BasePipeline(ABC):
         self.tokenizer = tokenizer
         self.prompt_format: str = prompt_format or ""
         self.kwargs = kwargs
-
-        if self.tokenizer.model_max_length > 100000000000000001988462483865:
-            self.tokenizer.model_max_length = 2048
 
         if device is None:
             # `accelerate` device map
@@ -83,12 +81,12 @@ class BasePipeline(ABC):
         return []
 
     def _get_stopping_criteria(
-        self, generate_kwargs: Dict[str, Any]
+        self, generate_kwargs: Dict[str, Any], model_inputs=None
     ) -> StoppingCriteriaList:
         return StoppingCriteriaList([])
 
     def _get_logits_processors(
-        self, generate_kwargs: Dict[str, Any]
+        self, generate_kwargs: Dict[str, Any], model_inputs=None
     ) -> LogitsProcessorList:
         lst = []
         stopping_tokens = self._default_stopping_tokens
@@ -102,6 +100,23 @@ class BasePipeline(ABC):
                     stopping_tokens, self.tokenizer.eos_token_id
                 )
             )
+            if model_inputs is not None:
+                min_new_tokens_stopping_sequences = []
+                for sequence in stopping_tokens:
+                    if isinstance(sequence, list):
+                        min_new_tokens_stopping_sequences.extend(sequence)
+                    else:
+                        min_new_tokens_stopping_sequences.append(sequence)
+                lst.append(
+                    MinNewTokensLengthLogitsProcessor(
+                        prompt_length_to_skip=model_inputs["inputs"]["input_ids"].shape[
+                            1
+                        ],
+                        min_new_tokens=generate_kwargs.pop("min_new_tokens", 4),
+                        eos_token_id=min_new_tokens_stopping_sequences
+                        + [self.tokenizer.eos_token_id],
+                    )
+                )
 
         # if getattr(self.model, "use_kernel", False):
         #     lst.append(InfNanRemoveLogitsProcessor())
@@ -145,8 +160,10 @@ class BasePipeline(ABC):
         return model_outputs
 
     def _get_stopping_tokens(
-        self, tokenizer: PreTrainedTokenizer, stopping_tokens: List[Union[str, int]]
-    ) -> Set[int]:
+        self,
+        tokenizer: PreTrainedTokenizer,
+        stopping_tokens: List[Union[str, int, List[int]]],
+    ) -> List[Union[List[int], int]]:
         if not stopping_tokens:
             return None
         return [
@@ -163,6 +180,7 @@ class BasePipeline(ABC):
         ) = self._sanitize_parameters(**kwargs)
         model_inputs = self.preprocess(inputs, **preprocess_params)
         model_inputs = self._ensure_tensor_on_device(model_inputs, device=self.device)
+        forward_params = self._add_default_generate_kwargs(forward_params, model_inputs)
         logger.info(f"Forward params: {forward_params}")
         model_outputs = self.forward(model_inputs, **forward_params)
         model_outputs = self._ensure_tensor_on_device(
@@ -228,9 +246,9 @@ class BasePipeline(ABC):
             return inputs
 
     def _add_default_generate_kwargs(
-        self, generate_kwargs: Dict[str, Any]
+        self, generate_kwargs: Dict[str, Any], model_inputs=None
     ) -> Dict[str, Any]:
-        stopping_criteria = self._get_stopping_criteria(generate_kwargs)
+        stopping_criteria = self._get_stopping_criteria(generate_kwargs, model_inputs)
         if stopping_criteria:
             if generate_kwargs.get("stopping_criteria", None):
                 generate_kwargs["stopping_criteria"].extend(stopping_criteria)
@@ -242,7 +260,7 @@ class BasePipeline(ABC):
                     stopping_criteria
                 )
 
-        logits_processor = self._get_logits_processors(generate_kwargs)
+        logits_processor = self._get_logits_processors(generate_kwargs, model_inputs)
         if logits_processor:
             if generate_kwargs.get("logits_processor", None):
                 generate_kwargs["logits_processor"].extend(logits_processor)
@@ -303,7 +321,7 @@ class BasePipeline(ABC):
 
         if stopping_tokens is not None:
             generate_kwargs["stopping_tokens"] = stopping_tokens
-        forward_params = self._add_default_generate_kwargs(generate_kwargs)
+        forward_params = generate_kwargs
 
         postprocess_params = {}
         if return_full_text is not None and return_type is None:

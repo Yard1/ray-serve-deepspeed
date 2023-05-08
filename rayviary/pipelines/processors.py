@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Type, Union
 
 import torch
 from transformers import LogitsProcessor, StoppingCriteria
@@ -53,6 +53,7 @@ class StopOnTokensLogitsProcessor(LogitsProcessor):
                         stop_id.to(batch.device)
                     ):
                         self._stopped_batches.add(batch_index)
+                        break
             if batch_index in self._stopped_batches:
                 if self._nulled_batch is None:
                     scores[batch_index, :] = -float("inf")

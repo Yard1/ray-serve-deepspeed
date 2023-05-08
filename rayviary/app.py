@@ -19,12 +19,6 @@ logger = get_logger(__name__)
 app = FastAPI()
 
 
-# raw_args = os.getenv("APPLICATION_ARGS")
-# assert raw_args is not None, "APPLICATION_ARGS env var must be set"
-# print("Received args", raw_args)
-# args = Args.parse_yaml(raw_args)
-
-
 ray.init(
     address="auto",
     runtime_env={
@@ -146,7 +140,7 @@ class LLMDeployment(LLMPredictor):
         logger.info("Reconfigured.")
 
     def _set_batch_queue_batch_size(self):
-        # Serve abuse to enable dynamic batch sizes
+        # Serve private API abuse to enable dynamic batch sizes
         batch_queue: _BatchQueue = getattr(
             self, "__serve_batch_queue_generate_text_batch", None
         )
@@ -188,7 +182,6 @@ class LLMDeployment(LLMPredictor):
                     ("state", "=", "DEAD"),
                 ],
                 raise_on_missing_output=False,
-                limit=10000,
             )
             if dead_actors:
                 raise RuntimeError(
