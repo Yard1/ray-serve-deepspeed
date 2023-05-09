@@ -12,23 +12,24 @@ from transformers import (
 
 
 class LLMInitializer(ABC):
+    """Initialize model and tokenizer and place them on the correct device."""
     def __init__(
         self,
         device: torch.device,
         world_size: int,
         dtype: torch.dtype = torch.float16,
-        **kwargs,
+        **from_pretrained_kwargs,
     ):
         self.device = device
         self.world_size = world_size
         self.dtype = dtype
-        self.kwargs = kwargs
+        self.kwargs = from_pretrained_kwargs
 
     @abstractmethod
     def get_model_from_pretrained_kwargs(self) -> Dict[str, Any]:
-        return self.kwargs
+        return self.from_pretrained_kwargs
 
-    def load(self, model_name) -> Tuple["PreTrainedModel", "PreTrainedTokenizer"]:
+    def load(self, model_name: str) -> Tuple["PreTrainedModel", "PreTrainedTokenizer"]:
         model = self.load_model(model_name)
         tokenizer = self.load_tokenizer(model_name)
         return self.postprocess_model(model), self.postprocess_tokenizer(tokenizer)

@@ -7,12 +7,15 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 from ..logger import get_logger
 from ..models import Response
 from ._base import BasePipeline
-from .utils import remove_dangling_stop_tokens
+from .processors import StopOnTokens
+from .utils import construct_prompts, truncate_to_first_stop_token
 
 logger = get_logger(__name__)
 
 
 class DefaultPipeline(BasePipeline):
+    """Default text generation pipeline."""
+
     def __init__(
         self,
         model: PreTrainedModel,
@@ -29,16 +32,10 @@ class DefaultPipeline(BasePipeline):
             **kwargs,
         )
 
-    @property
-    def _default_stopping_tokens(self) -> List[int]:
-        return [50278, 50279, 50277, 1, 0]
-
     def preprocess(self, prompts: List[str], **generate_kwargs):
         st = time.monotonic()
-        prompt_text = self._construct_prompts(
-            prompts,
-        )
-        instruction_text = self._construct_prompts(prompts, prompt_format="")
+        prompt_text = construct_prompts(prompts, prompt_format=self.prompt_format)
+        instruction_text = construct_prompts(prompts, prompt_format="")
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         inputs = self.tokenizer(
@@ -61,11 +58,12 @@ class DefaultPipeline(BasePipeline):
         prompt_text = model_inputs["prompt_text"]
         preprocessing_time = model_inputs["preprocessing_time"]
 
-        generate_kwargs = {
-            **inputs,
-            **generate_kwargs,
-        }
-        generated_sequence = self.model.generate(**generate_kwargs)
+        generated_sequence = self.model.generate(
+            **{
+                **inputs,
+                **generate_kwargs,
+            }
+        )
         et = time.monotonic() - st
         return {
             "inputs": inputs,
@@ -74,65 +72,32 @@ class DefaultPipeline(BasePipeline):
             "prompt_text": prompt_text,
             "preprocessing_time": preprocessing_time,
             "generation_time": et,
+            "generate_kwargs": generate_kwargs,
         }
 
-    def _sanitize_parameters(
-        self,
-        return_full_text=None,
-        return_tensors=None,
-        return_text=None,
-        return_type=None,
-        clean_up_tokenization_spaces=None,
-        prefix=None,
-        handle_long_generation=None,
-        stop_sequence=None,
-        return_token_type_ids=None,
-        stopping_tokens=None,
-        **generate_kwargs,
-    ):
-        (
-            preprocess_params,
-            forward_params,
-            postprocess_params,
-        ) = super()._sanitize_parameters(
-            return_full_text,
-            return_tensors,
-            return_text,
-            return_type,
-            clean_up_tokenization_spaces,
-            prefix,
-            handle_long_generation,
-            stop_sequence,
-            return_token_type_ids,
-            stopping_tokens,
-            **generate_kwargs,
-        )
-        postprocess_params["stopping_tokens"] = stopping_tokens
-        return preprocess_params, forward_params, postprocess_params
-
-    def postprocess(self, model_outputs, **generate_kwargs) -> List[Response]:
+    def postprocess(self, model_outputs, **postprocess_kwargs) -> List[Response]:
         st = time.monotonic()
         tokens = model_outputs["generated_sequence"]
         input_ids = model_outputs["inputs"]["input_ids"]
-        decoded: List[Response] = []
-        stopping_tokens = generate_kwargs.pop("stopping_tokens", None)
-        stop_ids = self._get_stopping_tokens(
-            self.tokenizer,
+        token_stopper = next(
             (
-                stopping_tokens
-                if stopping_tokens is not None
-                else self._default_stopping_tokens
+                x
+                for x in model_outputs["generate_kwargs"]["stopping_criteria"]
+                if isinstance(x, StopOnTokens)
             ),
+            None,
         )
-        if stop_ids and self.tokenizer.eos_token_id not in stop_ids:
-            stop_ids.append(self.tokenizer.eos_token_id)
+        decoded: List[Response] = []
         num_generated_tokens_batch = 0
         for token_unwrapped, inputs_unwrapped in zip(tokens, input_ids):
             logger.info(
                 f"Unprocessed generated tokens: '{self.tokenizer.decode(token_unwrapped, skip_special_tokens=False).encode('unicode_escape').decode('utf-8')}'"
             )
             tokens = token_unwrapped[len(inputs_unwrapped) :]
-            tokens = remove_dangling_stop_tokens(tokens, stop_ids)
+            if token_stopper:
+                tokens = truncate_to_first_stop_token(
+                    tokens, token_stopper.stopping_sequences
+                )
             text = (
                 self.tokenizer.decode(tokens, skip_special_tokens=True)
                 .replace("\u200b", "")

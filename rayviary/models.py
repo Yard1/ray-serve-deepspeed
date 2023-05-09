@@ -163,12 +163,12 @@ class LLM(BaseModelExtended):
         "top_k": 0,
     }
     from_pretrained_kwargs: Dict[str, Any] = {}
-    stopping_tokens: Optional[List[Union[str, int, List[Union[str, int]]]]] = None
+    stopping_sequences: Optional[List[Union[str, int, List[Union[str, int]]]]] = None
     mirror_bucket_uri: Optional[str] = None
 
     @property
     def all_generation_kwargs(self) -> Dict[str, Any]:
-        return {"stopping_tokens": self.stopping_tokens, **self.generation_kwargs}
+        return {"stopping_sequences": self.stopping_sequences, **self.generation_kwargs}
 
     @validator("prompt_format")
     def check_prompt_format(cls, value):
@@ -178,8 +178,8 @@ class LLM(BaseModelExtended):
             ), "prompt_format must be None, empty string or string containing '{instruction}'"
         return value
 
-    @validator("stopping_tokens")
-    def check_stopping_tokens(cls, value):
+    @validator("stopping_sequences")
+    def check_stopping_sequences(cls, value):
         def try_int(x):
             if isinstance(x, list):
                 return [try_int(y) for y in x]

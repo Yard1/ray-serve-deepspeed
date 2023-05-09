@@ -12,11 +12,12 @@ from transformers import (
     StoppingCriteriaList,
 )
 from transformers.pipelines.text_generation import ReturnType
+from transformers.utils import ModelOutput
 
 from ..logger import get_logger
 from ..models import Prompt, Response
-from .processors import StopOnTokensLogitsProcessor
-from .utils import get_special_token_id
+from .processors import StopOnTokens
+from .utils import tokenize_stopping_sequences_where_needed
 
 if TYPE_CHECKING:
     from ..initializers._base import LLMInitializer
@@ -76,77 +77,47 @@ class BasePipeline(ABC):
             **kwargs,
         )
 
-    @property
-    def _default_stopping_tokens(self) -> List[int]:
-        return []
-
     def _get_stopping_criteria(
         self, generate_kwargs: Dict[str, Any], model_inputs=None
     ) -> StoppingCriteriaList:
-        return StoppingCriteriaList([])
+        lst = []
+        stopping_sequences = None
+        if generate_kwargs.get("stopping_sequences", None) is not None:
+            stopping_sequences = tokenize_stopping_sequences_where_needed(
+                self.tokenizer, generate_kwargs["stopping_sequences"]
+            )
+        stopping_sequences = stopping_sequences or []
+        stopping_sequences += [self.tokenizer.eos_token_id]
+        lst.append(StopOnTokens(stopping_sequences))
+
+        return StoppingCriteriaList(lst)
 
     def _get_logits_processors(
         self, generate_kwargs: Dict[str, Any], model_inputs=None
     ) -> LogitsProcessorList:
         lst = []
-        stopping_tokens = self._default_stopping_tokens
-        if generate_kwargs.get("stopping_tokens", None) is not None:
-            stopping_tokens = self._get_stopping_tokens(
-                self.tokenizer, generate_kwargs["stopping_tokens"]
+        stopping_sequences = None
+        if generate_kwargs.get("stopping_sequences", None) is not None:
+            stopping_sequences = tokenize_stopping_sequences_where_needed(
+                self.tokenizer, generate_kwargs["stopping_sequences"]
             )
-        if stopping_tokens:
+        if stopping_sequences and model_inputs is not None:
+            min_new_tokens_stopping_sequences = []
+            for sequence in stopping_sequences:
+                if isinstance(sequence, list):
+                    min_new_tokens_stopping_sequences.extend(sequence)
+                else:
+                    min_new_tokens_stopping_sequences.append(sequence)
             lst.append(
-                StopOnTokensLogitsProcessor(
-                    stopping_tokens, self.tokenizer.eos_token_id
+                MinNewTokensLengthLogitsProcessor(
+                    prompt_length_to_skip=model_inputs["inputs"]["input_ids"].shape[1],
+                    min_new_tokens=generate_kwargs.pop("min_new_tokens", 4),
+                    eos_token_id=min_new_tokens_stopping_sequences
+                    + [self.tokenizer.eos_token_id],
                 )
             )
-            if model_inputs is not None:
-                min_new_tokens_stopping_sequences = []
-                for sequence in stopping_tokens:
-                    if isinstance(sequence, list):
-                        min_new_tokens_stopping_sequences.extend(sequence)
-                    else:
-                        min_new_tokens_stopping_sequences.append(sequence)
-                lst.append(
-                    MinNewTokensLengthLogitsProcessor(
-                        prompt_length_to_skip=model_inputs["inputs"]["input_ids"].shape[
-                            1
-                        ],
-                        min_new_tokens=generate_kwargs.pop("min_new_tokens", 4),
-                        eos_token_id=min_new_tokens_stopping_sequences
-                        + [self.tokenizer.eos_token_id],
-                    )
-                )
-
-        # if getattr(self.model, "use_kernel", False):
-        #     lst.append(InfNanRemoveLogitsProcessor())
 
         return LogitsProcessorList(lst)
-
-    def _construct_prompt(self, prompt: Union[str, Prompt], prompt_format: str) -> str:
-        if isinstance(prompt, Prompt):
-            if prompt.use_prompt_format and prompt_format:
-                return prompt_format.format(instruction=prompt.prompt)
-            else:
-                return prompt.prompt
-        return prompt_format.format(instruction=prompt) if prompt_format else prompt
-
-    def _construct_prompts(
-        self,
-        prompts: Union[str, Prompt, List[str], List[Prompt]],
-        prompt_format: Optional[str] = None,
-    ) -> List[str]:
-        if not isinstance(prompts, list):
-            prompts = [prompts]
-        return [
-            self._construct_prompt(
-                prompt,
-                prompt_format=prompt_format
-                if prompt_format is not None
-                else self.prompt_format,
-            )
-            for prompt in prompts
-        ]
 
     @abstractmethod
     def preprocess(self, prompts: List[str], **generate_kwargs):
@@ -158,18 +129,6 @@ class BasePipeline(ABC):
 
     def postprocess(self, model_outputs, **generate_kwargs) -> List[Response]:
         return model_outputs
-
-    def _get_stopping_tokens(
-        self,
-        tokenizer: PreTrainedTokenizer,
-        stopping_tokens: List[Union[str, int, List[int]]],
-    ) -> List[Union[List[int], int]]:
-        if not stopping_tokens:
-            return None
-        return [
-            get_special_token_id(tokenizer, key) if isinstance(key, str) else key
-            for key in stopping_tokens
-        ]
 
     @torch.inference_mode()
     def __call__(self, inputs: List[Union[str, Prompt]], **kwargs) -> List[Response]:
@@ -208,8 +167,6 @@ class BasePipeline(ABC):
         return self._ensure_tensor_on_device(inputs, self.device)
 
     def _ensure_tensor_on_device(self, inputs, device: torch.device):
-        from transformers.utils import ModelOutput
-
         if isinstance(inputs, ModelOutput):
             return ModelOutput(
                 {
@@ -272,7 +229,7 @@ class BasePipeline(ABC):
                     logits_processor
                 )
 
-        generate_kwargs.pop("stopping_tokens", None)
+        generate_kwargs.pop("stopping_sequences", None)
         return generate_kwargs
 
     def _sanitize_parameters(
@@ -286,7 +243,7 @@ class BasePipeline(ABC):
         handle_long_generation=None,
         stop_sequence=None,
         return_token_type_ids=None,
-        stopping_tokens=None,
+        stopping_sequences=None,
         **generate_kwargs,
     ):
         preprocess_params = {}
@@ -319,8 +276,8 @@ class BasePipeline(ABC):
                 )
             preprocess_params["handle_long_generation"] = handle_long_generation
 
-        if stopping_tokens is not None:
-            generate_kwargs["stopping_tokens"] = stopping_tokens
+        if stopping_sequences is not None:
+            generate_kwargs["stopping_sequences"] = stopping_sequences
         forward_params = generate_kwargs
 
         postprocess_params = {}

@@ -19,29 +19,12 @@ logger = get_logger(__name__)
 app = FastAPI()
 
 
-ray.init(
-    address="auto",
-    runtime_env={
-        "pip": [
-            "numpy==1.23",
-            "protobuf==3.20.0",
-            "transformers==4.28.1",
-            "accelerate==0.18.0",
-            "deepspeed==0.9.1",
-        ],
-        "env_vars": {"HF_HUB_DISABLE_PROGRESS_BARS": "1"},
-    },
-    ignore_reinit_error=True,
-)
-
-
 @serve.deployment(
     autoscaling_config={
         "min_replicas": 1,
         "initial_replicas": 2,
         "max_replicas": 8,
     },
-    ray_actor_options={"resources": {"worker_node": 0.5}},
     max_concurrent_queries=2,  # Maximum backlog for a single replica
     health_check_period_s=10,
     health_check_timeout_s=30,
@@ -61,7 +44,7 @@ class LLMDeployment(LLMPredictor):
 
     def _should_reinit_worker_group(
         self, new_args: Args, new_scaling_config: ScalingConfig
-    ) -> None:
+    ) -> bool:
         old_scaling_config = self.scaling_config
         old_args = self.args
 
@@ -100,8 +83,8 @@ class LLMDeployment(LLMPredictor):
             return True
 
         if (
-            old_args.model_config.stopping_tokens
-            != new_args.model_config.stopping_tokens
+            old_args.model_config.stopping_sequences
+            != new_args.model_config.stopping_sequences
         ):
             return True
 

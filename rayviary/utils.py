@@ -8,10 +8,37 @@ from typing import Optional
 
 from filelock import FileLock
 
-from rayviary.huggingface_utils import download_model
 from rayviary.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def download_model(model_name: str, bucket_uri: str):
+    from transformers.utils.hub import TRANSFORMERS_CACHE
+
+    logger.info(f"Downloading {model_name} from {bucket_uri} to '{TRANSFORMERS_CACHE}'")
+    path = os.path.expanduser(
+        os.path.join(TRANSFORMERS_CACHE, f"models--{model_name.replace('/', '--')}")
+    )
+    subprocess.run(
+        ["aws", "s3", "cp", "--quiet", os.path.join(bucket_uri, "hash"), "."]
+    )
+    with open(os.path.join(".", "hash"), "r") as f:
+        f_hash = f.read().strip()
+    subprocess.run(["mkdir", "-p", os.path.join(path, "snapshots", f_hash)])
+    subprocess.run(["mkdir", "-p", os.path.join(path, "refs")])
+    subprocess.run(
+        [
+            "aws",
+            "s3",
+            "sync",
+            "--quiet",
+            bucket_uri,
+            os.path.join(path, "snapshots", f_hash),
+        ]
+    )
+    with open(os.path.join(path, "refs", "main"), "w") as f:
+        f.write(f_hash)
 
 
 def timeit(func):

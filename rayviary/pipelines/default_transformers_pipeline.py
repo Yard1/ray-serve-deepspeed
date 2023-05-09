@@ -7,6 +7,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizer, pipeline
 from ..logger import get_logger
 from ..models import Prompt, Response
 from ._base import BasePipeline
+from .utils import construct_prompts
 
 if TYPE_CHECKING:
     from ..initializers._base import LLMInitializer
@@ -15,6 +16,10 @@ logger = get_logger(__name__)
 
 
 class DefaultTransformersPipeline(BasePipeline):
+    """Text generation pipeline using Transformers Pipeline.
+
+    May not support all features."""
+
     def __init__(
         self,
         model: PreTrainedModel,
@@ -43,7 +48,7 @@ class DefaultTransformersPipeline(BasePipeline):
         if not self.pipeline:
             self.pipeline = self._get_transformers_pipeline()
         kwargs = self._add_default_generate_kwargs(kwargs)
-        inputs = [str(input) for input in inputs]
+        inputs = construct_prompts(inputs, prompt_format=self.prompt_format)
         logger.info(f"Pipeline params: {kwargs}")
         return [
             Response(generated_text=text) for text in self.pipeline(inputs, **kwargs)
@@ -56,7 +61,7 @@ class DefaultTransformersPipeline(BasePipeline):
         model_name: str,
         prompt_format: Optional[str] = None,
         device: Optional[Union[str, int, torch.device]] = None,
-        stopping_tokens: List[Union[int, str]] = None,
+        stopping_sequences: List[Union[int, str]] = None,
         **kwargs,
     ) -> "DefaultTransformersPipeline":
         default_kwargs = dict(
@@ -73,7 +78,7 @@ class DefaultTransformersPipeline(BasePipeline):
             tokenizer=transformers_pipe.tokenizer,
             prompt_format=prompt_format,
             device=device,
-            stopping_tokens=stopping_tokens,
+            stopping_sequences=stopping_sequences,
             **kwargs,
         )
         pipe.pipeline = transformers_pipe

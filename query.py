@@ -32,7 +32,6 @@ if __name__ == "__main__":
 
 text = "Can you recommend some books to read?"
 resp = requests.post(
-    "https://aviary-v0-jrvwy.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata-staging.com/query/CarperAI--stable-vicuna-13b-delta",
-    headers={"Authorization": "Bearer LBGTsD3WEJiapmMnEOnLBt1IfneZIWoeeOGMjgAfpiI"},
+    "http://localhost:8000/query/CarperAI--stable-vicuna-13b-delta",
     json={"prompt": text},
 )
